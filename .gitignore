@@ -1,0 +1,23 @@
+my-chatbot/.env
+my-chatbot/backend/.env
+my-chatbot/backend/.venv/
+my-chatbot/backend/venv/
+my-chatbot/backend/.deploy-venv/
+
+# Secrets & local DB (never commit)
+*.sqlite3
+*.db
+
+# Python
+__pycache__/
+*.py[cod]
+.Python
+*.egg-info/
+.eggs/
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+
+# Editor backups
+*.bak

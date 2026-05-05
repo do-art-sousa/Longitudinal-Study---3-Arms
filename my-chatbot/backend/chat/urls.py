@@ -1,0 +1,21 @@
+from django.urls import path
+from .views import ChatAPIView, conversation_audit
+from . import views
+from . import study_views
+from . import export_views
+
+urlpatterns = [
+    path("chat/", ChatAPIView.as_view(), name="chat"),
+    path("start-conversation/", views.start_conversation, name="start_conversation"),
+    path("save-message/", views.save_message, name="save_message"),
+    path("audit/<uuid:conversation_id>/", conversation_audit, name="conversation_audit"),
+    path("study/register/", study_views.study_register, name="study_register"),
+    path("study/login/", study_views.study_login, name="study_login"),
+    path("study/progress/", study_views.study_progress, name="study_progress"),
+    path("study/session/start/", study_views.study_session_start, name="study_session_start"),
+    path("study/session/heartbeat/", study_views.study_heartbeat, name="study_heartbeat"),
+    path("study/session/complete/", study_views.study_session_complete, name="study_session_complete"),
+    path("study/session/exit/", study_views.study_session_exit, name="study_session_exit"),
+    path("export/quantitative/", export_views.export_quantitative_data, name="export_quantitative"),
+    path("export/chat-logs/", export_views.export_chat_logs, name="export_chat_logs"),
+]
