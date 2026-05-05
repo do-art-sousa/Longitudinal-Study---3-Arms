@@ -1,12 +1,7 @@
-# macOS
 .DS_Store
-
-# Python
-__pycache__/
-*.pyc
-my-chatbot/backend/venv/
 my-chatbot/backend/.env
-
-# Node / frontend build
+my-chatbot/backend/venv/
 my-chatbot/node_modules/
 my-chatbot/dist/
+__pycache__/
+*.pyc
