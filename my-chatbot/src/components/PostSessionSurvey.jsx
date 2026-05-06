@@ -56,6 +56,11 @@ export default function PostSessionSurvey({
   const [rcqResponses, setRcqResponses] = useState({});
   const [surveyResponses, setSurveyResponses] = useState({});
   const [reqResponses, setReqResponses] = useState({});
+  const [likertResponses, setLikertResponses] = useState({
+    rapport: null,
+    closeness: null,
+    flow: null,
+  });
   const [currentStep, setCurrentStep] = useState(() => (hasRcq ? "rcq" : "survey"));
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -70,6 +75,10 @@ export default function PostSessionSurvey({
 
   const handleReqChange = (id, value) => {
     setReqResponses((prev) => ({ ...prev, [id]: value }));
+  };
+
+  const handleLikertChange = (id, value) => {
+    setLikertResponses((prev) => ({ ...prev, [id]: value }));
   };
 
   const validateRcq = () => {
@@ -87,7 +96,16 @@ export default function PostSessionSurvey({
     );
   };
 
+  const validateLikert = () => {
+    return ["rapport", "closeness", "flow"].every(
+      (key) => Number.isInteger(likertResponses[key])
+    );
+  };
+
   const validateSurvey = () => {
+    if (!validateLikert()) {
+      return false;
+    }
     if (!caiqPanasSurvey) {
       return isControl ? validateReq() : true;
     }
@@ -137,8 +155,8 @@ export default function PostSessionSurvey({
     if (!validateSurvey()) {
       setError(
         isControl
-          ? "Por favor responde a todas as perguntas (PANAS e experiência de leitura)."
-          : "Por favor responde a todas as perguntas do questionário."
+          ? "Por favor responde a Likert, PANAS e experiência de leitura."
+          : "Por favor responde a Likert e a todas as perguntas do questionário."
       );
       return;
     }
@@ -148,7 +166,11 @@ export default function PostSessionSurvey({
       const body = {
         studySessionId,
         endReason: endReason || "completed_content",
-        likert: { rapport: 3, closeness: 3, flow: 3 },
+        likert: {
+          rapport: likertResponses.rapport,
+          closeness: likertResponses.closeness,
+          flow: likertResponses.flow,
+        },
       };
 
       if (currentRcq) {
@@ -268,6 +290,33 @@ export default function PostSessionSurvey({
         )}
 
         <form onSubmit={submit} className="survey-form">
+          <div className="survey-section" style={{ marginTop: "8px" }}>
+            <h3 className="survey-section-title" style={{ marginBottom: "8px" }}>
+              Feedback rápido da sessão
+            </h3>
+            <LikertRow
+              fieldId="likert_rapport"
+              label="Senti ligação com o meu companheiro de leitura."
+              value={likertResponses.rapport}
+              onChange={(value) => handleLikertChange("rapport", value)}
+              scale={LIKERT_SCALE}
+            />
+            <LikertRow
+              fieldId="likert_closeness"
+              label="Senti proximidade durante a interação."
+              value={likertResponses.closeness}
+              onChange={(value) => handleLikertChange("closeness", value)}
+              scale={LIKERT_SCALE}
+            />
+            <LikertRow
+              fieldId="likert_flow"
+              label="A sessão fluiu de forma natural para mim."
+              value={likertResponses.flow}
+              onChange={(value) => handleLikertChange("flow", value)}
+              scale={LIKERT_SCALE}
+            />
+          </div>
+
           {!isControl ? (
             <div className="survey-section">
               {caiqPanasSurvey.caiq_items.map((item) => (
