@@ -55,6 +55,34 @@ class StudyApiTests(TestCase):
     def setUp(self):
         self.client = Client()
 
+    def test_enrollment_preview(self):
+        r = self.client.get("/api/study/enrollment-preview/", {"code": "TEST-P"})
+        self.assertEqual(r.status_code, 200)
+        data = r.json()
+        self.assertTrue(data["valid"])
+        self.assertEqual(data["condition"], "personalized")
+        r_lower = self.client.get("/api/study/enrollment-preview/", {"code": "test-p"})
+        self.assertTrue(r_lower.json()["valid"])
+        self.assertEqual(r_lower.json()["condition"], "personalized")
+        r2 = self.client.get("/api/study/enrollment-preview/", {"code": "nope"})
+        self.assertFalse(r2.json()["valid"])
+
+    def test_register_personalized_requires_display_name(self):
+        r = self.client.post(
+            "/api/study/register/",
+            data=json.dumps(
+                {
+                    "enrollmentCode": "TEST-P",
+                    "displayName": "  ",
+                    "pin": "1234",
+                    "pinConfirm": "1234",
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("nome", r.json().get("error", "").lower())
+
     def test_register_invalid_code(self):
         r = self.client.post(
             "/api/study/register/",
@@ -97,6 +125,8 @@ class StudyApiTests(TestCase):
         self.assertEqual(prog["focusSlotIndex"], 1)
         self.assertEqual(prog["focusGlobalSessionIndex"], 1)
         self.assertEqual(prog["focusStatus"], "available")
+        self.assertFalse(prog.get("skipChat"))
+        self.assertEqual(prog.get("surveyInstrument"), "caiq_panas")
 
     def test_register_control_enrollment(self):
         r = self.client.post(
@@ -108,6 +138,13 @@ class StudyApiTests(TestCase):
         data = json.loads(r.content)
         p = Participant.objects.get(auth_token=data["authToken"])
         self.assertEqual(p.condition, Participant.Condition.CONTROL)
+        prog = json.loads(
+            self.client.get(
+                "/api/study/progress/", HTTP_AUTHORIZATION=f"Bearer {data['authToken']}"
+            ).content
+        )
+        self.assertTrue(prog.get("skipChat"))
+        self.assertEqual(prog.get("surveyInstrument"), "panas_req")
 
     def test_start_complete_unlocks_next(self):
         r = self.client.post(
@@ -146,6 +183,7 @@ class StudyApiTests(TestCase):
                     "studySessionId": sid,
                     "endReason": "completed_content",
                     "likert": {"rapport": 4, "closeness": 3, "flow": 5},
+                    "comprehension": {"main_response": "Smoke comprehension."},
                 }
             ),
             content_type="application/json",
@@ -320,6 +358,7 @@ class StudyApiTests(TestCase):
                     "studySessionId": sid,
                     "endReason": "completed_content",
                     "likert": {"rapport": 3, "closeness": 3, "flow": 3},
+                    "comprehension": {"main_response": "Smoke comprehension."},
                     "req_scores": REQ_SMOKE_BODY,
                 }
             ),
@@ -479,7 +518,7 @@ class StudyThreeArmFullScheduleSmokeTests(TestCase):
                 "endReason": "completed_content",
                 "likert": likert,
             }
-            if gidx in (3, 6, 9):
+            if gidx in (1, 3, 6, 9):
                 body["comprehension"] = {"main_response": "Smoke comprehension."}
             if control:
                 body["req_scores"] = REQ_SMOKE_BODY

@@ -1,7 +1,8 @@
 /* === App container === */
 .app-container {
+  flex: 1;
   width: 100%;
-  height: 100%;
+  min-height: 0;
   margin: 0;
   padding: 0;
   max-width: none;
@@ -9,24 +10,41 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  overflow: hidden; 
+  overflow: hidden;
 }
 
-html, body {
+html {
   height: 100%;
-  margin: 0;
-  padding: 0;
-  overflow: hidden; 
 }
 
+html,
 body {
   margin: 0;
-  display: grid;
-  place-items: center;
-  background: #eaeff5; /* Light blue-grey background */
+  padding: 0;
+  overflow: hidden;
+}
+
+/*
+ * Full-bleed layout: avoid body { grid/flex + place-items: center }, which shrinks #root
+ * and shows page background (#eaeff5) as left/right “gutters” beside the study UI.
+ */
+body {
+  min-height: 100%;
+  min-height: 100dvh;
+  display: block;
+  background: #eaeff5;
   color: #0f172a;
   color-scheme: light;
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: "Inter", system-ui, sans-serif;
+}
+
+#root {
+  width: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
 }
 
 /* ===== Typography & Shared ===== */
@@ -257,11 +275,45 @@ body {
    CHAT SCREEN
 ========================================= */
 .chat-screen {
-  position: fixed; inset: 0;
+  position: fixed;
+  inset: 0;
   background: #fff;
-  display: grid; grid-template-rows: auto 1fr auto;
-  align-items: start; justify-items: center;
-  gap: 0; padding: 0; z-index: 1; overflow: hidden;
+  /* Hero + scroll stack (messages + composer live inside .chat-main-area) */
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-areas:
+    "hero"
+    "main";
+  align-items: stretch;
+  justify-items: stretch;
+  gap: 0;
+  padding: 0;
+  z-index: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.chat-screen > .chat-hero {
+  grid-area: hero;
+}
+
+.chat-screen > .chat-and-activity-wrapper {
+  grid-area: main;
+  min-height: 0;
+}
+
+/* Corner placeholders are decorative only (no styles); if left in the grid they steal the 1fr row and clip the footer */
+.chat-screen > .corner {
+  display: none;
+}
+
+/* Long hero (título + metas + aviso RCQ + barra de tempo) pode exceder a viewport e com overflow:hidden no .chat-screen corta o compositor */
+.chat-screen .chat-hero {
+  min-height: 0;
+  max-height: min(48vh, 460px);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .chat-hero {
@@ -269,6 +321,18 @@ body {
   padding: clamp(20px, 4vw, 40px) clamp(16px, 3vw, 32px) clamp(10px, 2vw, 20px);
   width: 100%; box-sizing: border-box; flex-shrink: 0;
   border-bottom: 1px solid #f1f5f9;
+}
+
+.study-session-book-meta {
+  font-size: 13px;
+  color: #64748b;
+  margin: 6px 0 0;
+  line-height: 1.4;
+}
+
+.control-study-book-meta {
+  text-align: left;
+  margin-top: 4px;
 }
 
 .chat-status-bar {
@@ -283,10 +347,43 @@ body {
   font-size: 13px;
   font-weight: 600;
   color: #475569;
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 8px;
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
 
-.chat-timer.warning {
-  color: #dc2626;
+/* One-shot warning ~2 min before lock: 3× light red ↔ white, then normal */
+.chat-timer--ending-flash {
+  animation: chat-timer-ending-pulse 2.4s ease forwards;
+}
+
+@keyframes chat-timer-ending-pulse {
+  0%,
+  100% {
+    background-color: #ffffff;
+    color: #475569;
+  }
+  16.66% {
+    background-color: #fee2e2;
+    color: #991b1b;
+  }
+  33.33% {
+    background-color: #ffffff;
+    color: #475569;
+  }
+  50% {
+    background-color: #fee2e2;
+    color: #991b1b;
+  }
+  66.66% {
+    background-color: #ffffff;
+    color: #475569;
+  }
+  83.33% {
+    background-color: #fee2e2;
+    color: #991b1b;
+  }
 }
 
 .study-secondary-btn {
@@ -307,20 +404,36 @@ body {
   color: #1e293b;
 }
 
-/* Chat Messages Area */
+/* Chat Messages Area — column flex + flex:1/min-height:0 chain so overflow-y scrolls (height:% often breaks nested flex) */
 .chat-body {
-  width: min(980px, 92vw); height: 100%;
-  display: flex; justify-content: center; align-items: flex-start;
-  padding: 0; box-sizing: border-box; overflow: hidden;
+  flex: 1 1 0%;
+  min-height: 0;
+  align-self: center;
+  width: min(980px, 92vw);
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  padding: 0;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .messages {
-  width: 100%; height: 100%;
-  overflow-y: auto; overflow-x: hidden;
-  display: flex; flex-direction: column;
+  flex: 1 1 0%;
+  min-height: 0;
+  width: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
   gap: 12px;
-  padding: 24px 24px 120px;
+  padding: 24px 24px max(8rem, min(40vh, 12rem));
   scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  touch-action: pan-y;
+  scrollbar-gutter: stable;
 }
 
 .msg-row {
@@ -336,6 +449,10 @@ body {
   grid-column: 1 / -1;
   font-size: 12px; color: #6b7280;
   margin-bottom: 2px;
+  max-width: min(320px, 75vw);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .name-label.left { justify-self: start; }
 .name-label.right { justify-self: end; }
@@ -352,6 +469,20 @@ body {
   border: none; color: #fff; font-weight: 600; font-size: 14px; 
 }
 .user-avatar-text { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; }
+
+/* Generic study / default coach — blue–green (bot) and orange (user) gradient avatars */
+.chat-screen--generic-coach .avatar-generic-coach {
+  background: linear-gradient(145deg, #0ea5e9 0%, #14b8a6 55%, #22c55e 100%);
+  border: 2px solid rgba(14, 165, 233, 0.35);
+}
+.chat-screen--generic-coach .avatar-generic-user {
+  background: linear-gradient(145deg, #ffedd5 0%, #fb923c 50%, #c2410c 100%);
+  border: 2px solid rgba(251, 146, 60, 0.4);
+  color: transparent;
+}
+.chat-screen--generic-coach .avatar-generic-user .user-avatar-text {
+  display: none;
+}
 
 .msg-row.right .avatar-circle { order: 2; }
 .msg-row.right .bubble { order: 1; }
@@ -375,15 +506,41 @@ body {
   border-bottom-right-radius: 4px;
 }
 
+.chat-footer-stack {
+  position: relative;
+  z-index: 1;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  width: 100%;
+  max-width: 100%;
+  padding: 8px 12px max(12px, env(safe-area-inset-bottom, 0px));
+  gap: 0;
+}
+
+/* Fullscreen chat (non-embedded): narrow composer column like messages */
+.chat-screen:not(.chat-screen--embedded) .chat-footer-stack {
+  width: min(720px, 92vw);
+  max-width: 100%;
+  margin-inline: auto;
+}
+
 /* Chat Input */
 .input-wrap {
-  width: min(720px, 86vw);
-  display: grid; grid-template-columns: 1fr auto; align-items: center;
-  gap: 10px; padding: 8px 14px 8px 20px;
-  border-radius: 999px; border: 2px solid #cbd5e1; background: #fff;
-  box-shadow: 0 4px 15px rgba(0,0,0,0.05);
-  margin: 12px;
-  margin-bottom: 4px;
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px 8px 20px;
+  border-radius: 999px;
+  border: 2px solid #cbd5e1;
+  background: #fff;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+  margin: 0 auto;
+  box-sizing: border-box;
 }
 .chat-input {
   border: none; outline: none; font-size: 15px;
@@ -391,131 +548,582 @@ body {
 }
 .send-btn {
   width: 40px; height: 40px; border-radius: 50%; border: none;
-  background: #3b82f6; color: #fff; display: grid; place-items: center;
+  background: #3b82f6; color: #fff;
+  display: inline-flex; align-items: center; justify-content: center;
   cursor: pointer; transition: background-color 0.2s ease;
+  flex-shrink: 0;
+  padding: 0;
+  line-height: 0;
+}
+.send-btn-icon {
+  width: 20px;
+  height: 20px;
+  display: block;
+  flex-shrink: 0;
 }
 .send-btn:hover { background: #2563eb; }
 .send-btn:disabled { opacity: .5; cursor: not-allowed; }
 
 .chat-nudge {
   text-align: center;
-  margin-bottom: 24px;
+  margin: 8px 0 0;
   color: #94a3b8;
   font-size: 12px;
   font-style: italic;
-  padding: 0 20px;
+  padding: 0 12px;
+}
+
+.app-container:has(.tablet-session-shell) {
+  width: 100%;
+  max-width: none;
+  align-items: stretch;
+  justify-content: flex-start;
+  flex: 1;
+  min-height: 0;
+  height: 100vh;
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
 }
 
 /* =========================================
-   ACTIVITY SHEET SLIDE-OUT DRAWER
+   TABLET SESSION — interaction zone (full width)
+========================================= */
+.tablet-session-shell {
+  display: flex;
+  flex-direction: row;
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  background: #fff;
+  overflow: hidden;
+}
+
+/* Study UI without left ReaderZone: chat + sheet use full width */
+.tablet-session-shell--full-interaction .tablet-interaction-zone {
+  flex: 1;
+  width: 100%;
+  max-width: none;
+}
+
+.tablet-reader-zone {
+  flex: 0 0 42%;
+  max-width: 520px;
+  min-width: 260px;
+  border-right: 1px solid #e2e8f0;
+  background: linear-gradient(180deg, #f8fafc 0%, #fff 45%);
+  overflow-y: auto;
+}
+
+.tablet-reader-inner {
+  padding: clamp(16px, 3vw, 28px);
+  box-sizing: border-box;
+}
+
+.tablet-reader-kicker {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #64748b;
+  margin: 0 0 8px;
+}
+
+.tablet-reader-title {
+  font-size: clamp(1.2rem, 2.4vw, 1.65rem);
+  color: #0f172a;
+  margin: 0 0 8px;
+  line-height: 1.2;
+}
+
+.tablet-reader-meta {
+  font-size: 14px;
+  color: #475569;
+  margin: 0 0 14px;
+}
+
+.tablet-reader-hint {
+  font-size: 14px;
+  line-height: 1.5;
+  color: #64748b;
+  margin: 0 0 20px;
+}
+
+.tablet-reader-placeholder {
+  border: 2px dashed #cbd5e1;
+  border-radius: 12px;
+  min-height: 160px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+}
+
+.tablet-reader-placeholder-icon {
+  font-size: 44px;
+  opacity: 0.35;
+}
+
+.tablet-interaction-zone {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/*
+ * Study shell lives inside .tablet-interaction-zone (flex column). Grid + height:100% often clips the footer.
+ * Flex column keeps hero + scrollable middle + composer stacked within the available height.
+ */
+.chat-screen--embedded {
+  --activity-drawer-w: min(38vw, 480px);
+  position: relative !important;
+  inset: auto !important;
+  width: 100%;
+  min-height: 0;
+  flex: 1 1 0%;
+  z-index: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  /* Lock to parent viewport — height:auto lets content grow past the screen and hides the composer */
+  height: 100%;
+  max-height: 100%;
+}
+
+.chat-screen--embedded > .chat-hero {
+  flex-shrink: 0;
+}
+
+.chat-screen--embedded > .chat-and-activity-wrapper {
+  flex: 1 1 0%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Composer dentro da coluna do chat (estudo): não atravessa o painel da Ficha */
+.chat-screen--embedded .chat-main-area > .chat-footer-stack {
+  background: #f8fafc;
+  border-top: 1px solid #e2e8f0;
+  box-shadow: none;
+  padding: 10px 16px max(14px, env(safe-area-inset-bottom, 0px));
+}
+
+.chat-screen--embedded .chat-footer-stack .input-wrap {
+  max-width: min(720px, 92vw);
+  margin-inline: auto;
+}
+
+.chat-screen--embedded .chat-footer-stack .chat-nudge,
+.chat-screen--embedded .chat-footer-stack .activity-submission-hint--inline {
+  max-width: min(720px, 92vw);
+  margin-inline: auto;
+}
+
+.chat-screen--embedded .chat-footer-stack .chat-nudge {
+  margin-top: 8px;
+}
+
+.chat-screen--embedded .input-wrap {
+  border-radius: 22px;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  box-shadow: none;
+}
+
+/* Ficha acima da barra do chat; scroll próprio no painel */
+.activity-drawer-tab-fixed.activity-drawer--embedded {
+  --activity-drawer-w: min(38vw, 480px);
+  position: fixed;
+  top: env(safe-area-inset-top, 0px);
+  bottom: env(safe-area-inset-bottom, 0px);
+  right: 0;
+  height: auto;
+  transform: none;
+  z-index: 55;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.activity-drawer-panel-fixed.activity-drawer--embedded {
+  --activity-drawer-w: min(38vw, 480px);
+  position: fixed;
+  top: env(safe-area-inset-top, 0px);
+  bottom: env(safe-area-inset-bottom, 0px);
+  right: 0;
+  width: var(--activity-drawer-w);
+  height: auto;
+  max-height: none;
+  z-index: 50;
+  box-shadow: -8px 0 28px rgba(15, 23, 42, 0.1);
+}
+
+.activity-sheet-panel-inner {
+  padding-bottom: max(2.5rem, env(safe-area-inset-bottom, 0px));
+}
+
+.control-study-interaction {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: #fff;
+}
+
+.control-study-header {
+  flex-shrink: 0;
+  padding: 14px 18px;
+  border-bottom: 1px solid #f1f5f9;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.control-study-title {
+  font-size: 1.05rem;
+  margin: 0 0 4px;
+  color: #0f172a;
+}
+
+.control-study-sub {
+  margin: 0;
+  font-size: 13px;
+  color: #64748b;
+  line-height: 1.45;
+}
+
+.control-study-sheet-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 18px 20px;
+}
+
+.control-study-footer {
+  flex-shrink: 0;
+  padding: 14px 18px;
+  border-top: 1px solid #e2e8f0;
+  background: #fafafa;
+}
+
+.control-end-btn {
+  width: 100%;
+}
+
+.activity-submission-hint {
+  font-size: 13px;
+  color: #b45309;
+  margin: 0 0 12px;
+  line-height: 1.4;
+}
+
+.activity-submission-hint--inline {
+  text-align: center;
+  padding: 0 12px 6px;
+  margin: 0;
+  color: #b45309;
+}
+
+/* Backend-driven cue: global sessions 3 / 6 / 9 → RCQ in PostSessionSurvey after session end */
+.session-rcq-cue {
+  font-size: 13px;
+  line-height: 1.45;
+  color: #1e40af;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin: 12px auto 0;
+  max-width: 640px;
+  text-align: left;
+}
+
+.session-rcq-cue--compact {
+  margin-top: 10px;
+  margin-bottom: 0;
+  max-width: none;
+}
+
+@media (max-width: 720px) {
+  .tablet-session-shell {
+    flex-direction: column;
+  }
+  .tablet-reader-zone {
+    flex: 0 0 auto;
+    max-width: none;
+    max-height: 32vh;
+    border-right: none;
+    border-bottom: 1px solid #e2e8f0;
+  }
+  .tablet-interaction-zone {
+    flex: 1;
+    min-height: 55vh;
+  }
+}
+
+/* =========================================
+   ACTIVITY SHEET — edge tab + overlay drawer
 ========================================= */
 .chat-and-activity-wrapper {
   display: flex;
   width: 100%;
+  min-height: 0;
   height: 100%;
+  align-items: stretch;
   overflow: hidden;
   position: relative;
   justify-content: center;
 }
 
 .chat-main-area {
-  flex-grow: 1;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: stretch;
   width: 100%;
+  position: relative;
+  z-index: 1;
+  overflow: hidden;
 }
 
-.activity-drawer {
-  position: absolute;
-  right: -420px; /* Hidden off-screen */
+.chat-screen--embedded .chat-main-area {
+  background: #fff;
+}
+
+/*
+ * Estudo: coluna do chat não pode ir por baixo do painel (largura reduzida).
+ * NÃO usar align-self: flex-start — no flex row isso impede stretch na altura e o compositor
+ * cai fora do ecrã (só cresce ao conteúdo em vez de preencher a zona).
+ */
+.chat-screen--embedded.chat-screen--embedded--sheet-open .chat-main-area,
+.chat-screen--embedded:has(.activity-drawer-panel-fixed.is-open) .chat-main-area {
+  width: calc(100% - var(--activity-drawer-w));
+  max-width: calc(100% - var(--activity-drawer-w));
+  flex: 1 1 0%;
+  min-height: 0;
+  align-self: stretch;
+  margin-right: auto;
+  box-sizing: border-box;
+}
+
+.chat-screen--embedded .chat-and-activity-wrapper {
+  justify-content: flex-start;
+}
+
+.activity-drawer-tab-fixed {
+  --activity-drawer-w: min(420px, calc(100vw - 24px));
+  --activity-drawer-tab-w: 40px;
+  position: fixed;
+  top: 50%;
+  right: 0;
+  z-index: 50;
+  width: var(--activity-drawer-tab-w);
+  min-height: 104px;
+  margin: 0;
+  padding: 8px 4px;
+  border-radius: 10px 0 0 10px;
+  border: 1px solid #cbd5e1;
+  border-right: none;
+  background: linear-gradient(180deg, #f8fafc 0%, #e2e8f0 100%);
+  color: #1e293b;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  box-shadow: -2px 0 12px rgba(15, 23, 42, 0.08);
+  transform: translateY(-50%);
+  transition: right 0.28s cubic-bezier(0.4, 0, 0.2, 1), background 0.2s ease;
+}
+
+.activity-drawer-tab-fixed:hover {
+  background: linear-gradient(180deg, #fff 0%, #e2e8f0 100%);
+}
+
+.activity-drawer-tab-fixed:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+/* When open: sit wholly in the chat band — tab width to the left of the drawer (no overlap) */
+.activity-drawer-tab-fixed.is-open {
+  right: calc(var(--activity-drawer-w) + var(--activity-drawer-tab-w));
+}
+
+.activity-drawer-tab-chevron {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.activity-drawer-tab-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  text-transform: uppercase;
+  color: #475569;
+}
+
+.activity-drawer-panel-fixed {
+  --activity-drawer-w: min(420px, calc(100vw - 24px));
+  position: fixed;
   top: 0;
-  bottom: 0;
-  width: 400px;
+  right: 0;
+  width: var(--activity-drawer-w);
+  height: 100vh;
+  max-height: 100dvh;
+  z-index: 40;
   background: #f8fafc;
   border-left: 1px solid #cbd5e1;
-  box-shadow: -4px 0 25px rgba(0,0,0,0.08);
-  transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  padding: 24px;
-  z-index: 10;
+  box-shadow: -8px 0 32px rgba(15, 23, 42, 0.12);
+  padding: 20px 20px 28px;
+  padding-bottom: max(28px, env(safe-area-inset-bottom, 0px));
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 16px;
+  transform: translateX(100%);
+  transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+  visibility: hidden;
+  pointer-events: none;
 }
 
-.activity-drawer.open {
-  right: 0; 
+.activity-drawer-panel-fixed.is-open {
+  transform: translateX(0);
+  visibility: visible;
+  pointer-events: auto;
 }
 
 .drawer-header {
   font-weight: 800;
   color: #0f172a;
-  font-size: 20px;
+  font-size: 18px;
   border-bottom: 2px solid #e2e8f0;
-  padding-bottom: 12px;
-  margin-bottom: 8px;
+  padding-bottom: 10px;
+  margin: 0;
+}
+
+.drawer-instructions {
+  font-size: 14px;
+  color: #475569;
+}
+
+.drawer-instructions strong {
+  color: #1e293b;
+}
+
+.drawer-steps-list {
+  padding-left: 18px;
+  margin: 8px 0 16px;
+  line-height: 1.45;
 }
 
 .task-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
 }
 
-.task-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
+.task-list-heading {
+  font-size: 14px;
+  color: #1e293b;
+}
+
+.task-list-hint {
+  font-size: 13px;
+  color: #64748b;
+  margin: -6px 0 4px;
+  line-height: 1.4;
+}
+
+.task-block {
   background: #fff;
   padding: 14px;
   border-radius: 10px;
   border: 1px solid #cbd5e1;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.task-item:hover {
-  background: #f1f5f9;
-  border-color: #94a3b8;
-}
-
-.task-item input[type="checkbox"] {
-  width: 22px;
-  height: 22px;
-  margin-top: 0;
-  cursor: pointer;
-  accent-color: #3b82f6;
-  flex-shrink: 0;
-}
-
-.task-item span {
-  font-size: 14px;
-  color: #334155;
-  line-height: 1.5;
-}
-
-.task-item.completed span {
-  text-decoration: line-through;
-  color: #94a3b8;
-}
-
-.toggle-activity-btn {
-  background-color: #3b82f6;
-  color: #fff;
-  border: none;
-  padding: 8px 16px;
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background-color 0.2s ease;
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 8px;
 }
 
-.toggle-activity-btn:hover {
-  background-color: #2563eb;
+.task-block.completed {
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+
+/* Checked but empty note after user tries to leave — red frame (not green “completed”) */
+.task-block--note-invalid {
+  border-color: #dc2626 !important;
+  background: #fef2f2;
+  box-shadow: 0 0 0 1px rgba(220, 38, 38, 0.35);
+}
+
+.task-note-input--invalid {
+  border-color: #dc2626;
+}
+
+.task-note-required-msg {
+  margin: 0;
+  font-size: 12px;
+  color: #b91c1c;
+  line-height: 1.35;
+}
+
+.task-block-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+  font-size: 14px;
+  color: #334155;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.task-block-check input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  margin-top: 2px;
+  flex-shrink: 0;
+  accent-color: #3b82f6;
+  cursor: pointer;
+}
+
+.task-note-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.task-note-input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 14px;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 72px;
+  color: #0f172a;
+  background: #fff;
+}
+
+.task-note-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
 }
 
 /* =========================================

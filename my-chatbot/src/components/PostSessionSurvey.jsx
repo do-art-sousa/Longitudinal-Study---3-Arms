@@ -3,7 +3,9 @@ import { rcqData } from "../data/rcq_data";
 import { REQ_ITEMS } from "../data/req_data";
 import {
   CAIQ_PANAS_INSTRUCTION,
+  CAIQ_AGREEMENT_EMOJI_LEGEND,
   PANAS_INSTRUCTION,
+  PANAS_SCALE_LEGEND,
   LIKERT_SCALE,
   PANAS_LIKERT_SCALE,
   getSurveyForSession,
@@ -11,6 +13,12 @@ import {
 } from "../data/caiq_panas_data";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+
+/**
+ * Shown only after the child ends the session (chat/control interaction + activity sheet).
+ * Order: (1) RCQ when this global session includes it (1, 3, 6, 9); then (2) one combined step —
+ * Likert + CAIQ-PANAS (personalized/generic) or Likert + PANAS + REQ (control). All arms submit once.
+ */
 
 function LikertRow({ label, fieldId, value, onChange, scale = LIKERT_SCALE }) {
   return (
@@ -37,7 +45,7 @@ function LikertRow({ label, fieldId, value, onChange, scale = LIKERT_SCALE }) {
 export default function PostSessionSurvey({
   authToken,
   studySessionId,
-  /** 1-based index across the study (week×slot); drives RCQ blocks 3 / 6 / 9 and PANAS variant. */
+  /** 1-based index across the study (week×slot); RCQ on sessions 1, 3, 6, 9 then CAIQ-PANAS; full vs mini by session. */
   globalSessionIndex: globalSessionIndexProp,
   /** Within-week slot 1–3 (optional, for display only). */
   slotIndex: slotIndexProp,
@@ -221,6 +229,10 @@ export default function PostSessionSurvey({
       <div className="post-survey">
         <h2 className="hero-title">Compreensão de leitura</h2>
         <p className="hero-sub">
+          Primeiro passo dos questionários de fim de sessão (depois da leitura e da ficha). Em seguida
+          vais preencher os questionários de experiência (CAIQ-PANAS ou REQ, conforme o grupo).
+        </p>
+        <p className="hero-sub">
           Responde de forma honesta — não há respostas certas ou erradas.
         </p>
         <form
@@ -267,6 +279,12 @@ export default function PostSessionSurvey({
         <h2 className="hero-title">
           {isControl ? "Questionários da sessão" : "Questionário de satisfação"}
         </h2>
+        {hasRcq ? (
+          <p className="hero-sub" style={{ marginBottom: "10px" }}>
+            Segundo passo: experiência da sessão — Likert, PANAS e{" "}
+            {isControl ? "experiência de leitura (REQ)." : "CAIQ-PANAS."}
+          </p>
+        ) : null}
         {!isControl ? (
           <>
             <p className="hero-sub" style={{ marginBottom: "8px" }}>
@@ -280,13 +298,20 @@ export default function PostSessionSurvey({
                 marginBottom: "24px",
               }}
             >
-              😢 Discordo totalmente | 😕 Discordo | 😐 Neutro | 🙂 Concordo | 😊 Concordo totalmente
+              {CAIQ_AGREEMENT_EMOJI_LEGEND}
             </div>
           </>
         ) : (
-          <p className="hero-sub" style={{ marginBottom: "16px" }}>
-            Indica como te sentiste durante a leitura e a interação (escala 1–5 em cada dimensão).
-          </p>
+          <div
+            style={{
+              fontStyle: "italic",
+              fontSize: "0.9em",
+              color: "#64748b",
+              marginBottom: "24px",
+            }}
+          >
+            {CAIQ_AGREEMENT_EMOJI_LEGEND}
+          </div>
         )}
 
         <form onSubmit={submit} className="survey-form">
@@ -344,7 +369,7 @@ export default function PostSessionSurvey({
                 marginBottom: "24px",
               }}
             >
-              1 = Nada ou muito pouco | 2 = Um pouco | 3 = Moderadamente | 4 = Bastante | 5 = Muitíssimo
+              {PANAS_SCALE_LEGEND}
             </div>
             {caiqPanasSurvey.panas_items.map((item) => (
               <LikertRow
@@ -363,6 +388,9 @@ export default function PostSessionSurvey({
               <h3 className="survey-section-title" style={{ marginBottom: "8px" }}>
                 Experiência de leitura (REQ)
               </h3>
+              <p className="hero-sub" style={{ marginBottom: "8px" }}>
+                {CAIQ_PANAS_INSTRUCTION}
+              </p>
               <div
                 style={{
                   fontStyle: "italic",
@@ -371,7 +399,7 @@ export default function PostSessionSurvey({
                   marginBottom: "24px",
                 }}
               >
-                1 = Discordo totalmente … 5 = Concordo totalmente
+                {CAIQ_AGREEMENT_EMOJI_LEGEND}
               </div>
               {REQ_ITEMS.map((item) => (
                 <LikertRow
@@ -380,7 +408,7 @@ export default function PostSessionSurvey({
                   label={item.text}
                   value={reqResponses[item.id] || ""}
                   onChange={(value) => handleReqChange(item.id, value)}
-                  scale={PANAS_LIKERT_SCALE}
+                  scale={LIKERT_SCALE}
                 />
               ))}
             </div>

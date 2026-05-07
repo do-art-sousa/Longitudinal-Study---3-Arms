@@ -1,22 +1,24 @@
 """
 Hidden evaluator for RCQ responses.
 """
-import os
 import json
 from typing import Dict, Any, Optional
+
+from django.conf import settings
+
 
 def evaluate_rcq(global_session_index: int, responses: Dict[str, str]) -> Optional[Dict[str, Any]]:
     """
     Evaluate the child's responses against hidden answer keys using an LLM.
-    global_session_index: 1-based index across weeks (RCQ at sessions 3, 6, 9).
+    global_session_index: 1-based index across weeks (RCQ at sessions 1, 3, 6, 9).
     """
-    if global_session_index not in (3, 6, 9):
+    if global_session_index not in (1, 3, 6, 9):
         return None
 
     # We need the answer keys. For simplicity, we define them here or pass them.
     # Given the previous context, we know the questions and expected answers.
     
-    api_key = os.getenv("OPENAI_API_KEY")
+    api_key = getattr(settings, "OPENAI_API_KEY", "") or ""
     if not api_key:
         return {"error": "Scoring skipped: API key missing"}
 

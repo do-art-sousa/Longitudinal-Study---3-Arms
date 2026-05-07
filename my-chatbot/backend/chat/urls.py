@@ -9,6 +9,11 @@ urlpatterns = [
     path("start-conversation/", views.start_conversation, name="start_conversation"),
     path("save-message/", views.save_message, name="save_message"),
     path("audit/<uuid:conversation_id>/", conversation_audit, name="conversation_audit"),
+    path(
+        "study/enrollment-preview/",
+        study_views.study_enrollment_preview,
+        name="study_enrollment_preview",
+    ),
     path("study/register/", study_views.study_register, name="study_register"),
     path("study/login/", study_views.study_login, name="study_login"),
     path("study/progress/", study_views.study_progress, name="study_progress"),

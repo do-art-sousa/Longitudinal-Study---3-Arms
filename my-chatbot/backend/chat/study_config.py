@@ -21,18 +21,24 @@ class StudyProfile:
     default_character: str
 
 
+def _normalize_enrollment_token(value: str) -> str:
+    """Strip and case-fold so enrollment codes match regardless of capitalization."""
+    return str(value).strip().casefold()
+
+
 def _codes_from_env(name: str) -> FrozenSet[str]:
     raw = getattr(settings, name, "") or ""
-    return frozenset(x.strip() for x in raw.split(",") if x.strip())
+    return frozenset(_normalize_enrollment_token(x) for x in raw.split(",") if x.strip())
 
 
 def resolve_enrollment_code(code: str) -> Optional[str]:
     """
     Return Participant.Condition value or None if invalid.
+    Matching is case-insensitive (e.g. pers-01 and Pers-01 are equivalent).
     """
-    if not code or not str(code).strip():
+    normalized = _normalize_enrollment_token(code or "")
+    if not normalized:
         return None
-    normalized = str(code).strip()
     if normalized in _codes_from_env("STUDY_CODES_PERSONALIZED"):
         return Participant.Condition.PERSONALIZED
     if normalized in _codes_from_env("STUDY_CODES_GENERIC"):

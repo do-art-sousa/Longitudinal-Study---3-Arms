@@ -1,9 +1,11 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { defaultCharacter, characters } from "../data/characters";
 import NameInput from "./NameInput.jsx";
 import CharacterSelection from "./CharacterSelection.jsx";
 import Chat from "./Chat.jsx";
 import PostSessionSurvey from "./PostSessionSurvey.jsx";
+import ControlStudyInteraction from "./ControlStudyInteraction.jsx";
+import { clearActivitySheetDraft } from "../utils/activitySheetDraft.js";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
@@ -59,6 +61,26 @@ export default function StudySessionDashboard({ authToken, onLogout }) {
     setProgress(data);
   }, [authToken, onLogout]);
 
+  /**
+   * Sync enrollment display name into the lobby for personalized arms.
+   * Generic arm: do not copy enrollment into `username` — chat must show "User" unless the child
+   * enters a name in-session (name step); enrollment-only names should not appear in the chat label.
+   */
+  useEffect(() => {
+    const dn = progress?.displayName?.trim();
+    if (!dn) return;
+    if (progress?.condition === "generic") return;
+    setUsername(dn);
+    localStorage.setItem("userName", dn);
+  }, [progress?.displayName, progress?.condition]);
+
+  /** Clear stale browser name when loading a generic participant (e.g. previously synced enrollment). */
+  useEffect(() => {
+    if (progress?.condition !== "generic") return;
+    setUsername("");
+    localStorage.removeItem("userName");
+  }, [progress?.condition]);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -85,8 +107,25 @@ export default function StudySessionDashboard({ authToken, onLogout }) {
 
   const condition = progress?.condition;
   const personalized = condition === "personalized";
+  const skipChat = progress?.skipChat === true;
   const needCharacter =
     progress?.allowCharacterSelection && personalized;
+
+  /** Stable reference for Chat / control shell — avoids unnecessary context churn to children. */
+  const studyChatSessionContext = useMemo(() => {
+    if (phase !== "chat" || !playPayload) return null;
+    return {
+      authToken,
+      studySessionId: playPayload.studySessionId,
+      conversationId: playPayload.conversationId,
+      sessionStartedAtISO: playPayload.sessionStartedAt,
+      maxSessionMinutes: playPayload.maxSessionMinutes,
+      initialMessages: playPayload.messages,
+      slotIndex: playPayload.slotIndex,
+      globalSessionIndex: playPayload.globalSessionIndex,
+      showComprehension: playPayload.showComprehension === true,
+    };
+  }, [phase, authToken, playPayload]);
 
   const beginStartFlow = () => {
     if (needCharacter && !username?.trim()) {
@@ -119,18 +158,32 @@ export default function StudySessionDashboard({ authToken, onLogout }) {
       : progress?.defaultCharacter || "default";
     const persona =
       charKey === "default" ? defaultCharacter : characters[charKey];
-    const initialRaw = username?.trim()
-      ? persona.initialMessage.replace("{username}", username.trim())
-      : persona.initialMessage;
+    const nameForSession =
+      condition === "generic"
+        ? username?.trim() || ""
+        : username?.trim() || progress?.displayName?.trim() || "";
+    const initialRaw =
+      condition === "control"
+        ? ""
+        : nameForSession
+          ? persona.initialMessage.replace("{username}", nameForSession)
+          : persona.initialMessage;
+
+    const startBody = {
+      studySessionId: focusId,
+      character: charKey,
+    };
+    const trimmedLobbyName = username?.trim();
+    if (trimmedLobbyName) {
+      startBody.userName = trimmedLobbyName;
+    }
+    if (initialRaw) {
+      startBody.initialMessage = initialRaw;
+    }
 
     const res = await studyFetch("/api/study/session/start/", authToken, {
       method: "POST",
-      body: JSON.stringify({
-        studySessionId: focusId,
-        userName: username?.trim() || "Participant",
-        character: charKey,
-        initialMessage: initialRaw,
-      }),
+      body: JSON.stringify(startBody),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
@@ -138,12 +191,26 @@ export default function StudySessionDashboard({ authToken, onLogout }) {
       return;
     }
 
+    const userNameForChat =
+      condition === "generic"
+        ? username?.trim() || "User"
+        : (() => {
+            const resolved = (
+              data.userName ||
+              username?.trim() ||
+              progress?.displayName?.trim() ||
+              ""
+            ).trim();
+            return resolved || "Participant";
+          })();
+
     setPlayPayload({
       studySessionId: data.studySessionId,
       conversationId: data.conversationId,
       messages: data.messages || [],
       sessionStartedAt: data.sessionStartedAt,
       maxSessionMinutes: progress?.maxSessionMinutes ?? 20,
+      weekIndex: progress?.focusWeekIndex,
       slotIndex: progress?.focusSlotIndex ?? 1,
       globalSessionIndex:
         progress?.focusGlobalSessionIndex ??
@@ -151,12 +218,16 @@ export default function StudySessionDashboard({ authToken, onLogout }) {
           ? (progress.focusWeekIndex - 1) * 3 + progress.focusSlotIndex
           : 1),
       character: data.character || charKey,
-      userName: data.userName || username?.trim() || "Participant",
+      userName: userNameForChat,
+      showComprehension: progress?.showComprehension === true,
     });
     setPhase("chat");
   };
 
   const handleSurveyDone = async () => {
+    if (playPayload?.studySessionId) {
+      clearActivitySheetDraft(playPayload.studySessionId);
+    }
     setSurveyCtx(null);
     setPlayPayload(null);
     setPhase("lobby");
@@ -175,6 +246,7 @@ export default function StudySessionDashboard({ authToken, onLogout }) {
     return (
       <div className="study-lobby">
         <NameInput
+          enrollmentName={progress?.displayName || ""}
           onSubmit={(name) => {
             setUsername(name);
             localStorage.setItem("userName", name);
@@ -228,59 +300,47 @@ export default function StudySessionDashboard({ authToken, onLogout }) {
   }
 
   if (phase === "chat" && playPayload) {
+    const goSurvey = (endReason) => {
+      setSurveyCtx({
+        slotIndex: playPayload.slotIndex,
+        globalSessionIndex: playPayload.globalSessionIndex,
+        condition,
+        endReason,
+      });
+      setPhase("survey");
+    };
+
     return (
-      <>
-        <Chat
-          key={playPayload.studySessionId}
-          selectedCharacter={playPayload.character}
-          username={playPayload.userName}
-          studyContext={{
-            authToken,
-            studySessionId: playPayload.studySessionId,
-            conversationId: playPayload.conversationId,
-            sessionStartedAtISO: playPayload.sessionStartedAt,
-            maxSessionMinutes: playPayload.maxSessionMinutes,
-            initialMessages: playPayload.messages,
-            slotIndex: playPayload.slotIndex,
-            globalSessionIndex: playPayload.globalSessionIndex,
-          }}
-          onStudyLocked={(reason) => {
-            setSurveyCtx({
-              slotIndex: playPayload.slotIndex,
-              globalSessionIndex: playPayload.globalSessionIndex,
-              condition,
-              endReason: reason === "time_cap" ? "time_cap" : "inactive_timeout",
-            });
-            setPhase("survey");
-          }}
-          onRequestEndSession={() => {
-            setSurveyCtx({
-              slotIndex: playPayload.slotIndex,
-              globalSessionIndex: playPayload.globalSessionIndex,
-              condition,
-              endReason: "explicit_exit",
-            });
-            setPhase("survey");
-          }}
-        />
-        <div className="toolbar">
-          <button
-            type="button"
-            className="study-secondary-btn"
-            onClick={() => {
-              setSurveyCtx({
-                slotIndex: playPayload.slotIndex,
-                globalSessionIndex: playPayload.globalSessionIndex,
-                condition,
-                endReason: "completed_content",
-              });
-              setPhase("survey");
-            }}
-          >
-            Terminar sessão e questionários
-          </button>
+      <div className="tablet-session-shell tablet-session-shell--full-interaction">
+        <div className="tablet-interaction-zone">
+          {skipChat ? (
+            <ControlStudyInteraction
+              studyCondition={condition}
+              studyContext={studyChatSessionContext}
+              showComprehension={playPayload.showComprehension === true}
+              slotIndex={playPayload.slotIndex}
+              globalSessionIndex={playPayload.globalSessionIndex}
+              onStudyLocked={(reason) => {
+                goSurvey(reason === "time_cap" ? "time_cap" : "inactive_timeout");
+              }}
+              onRequestEndSession={() => goSurvey("completed_content")}
+            />
+          ) : (
+            <Chat
+              key={playPayload.studySessionId}
+              selectedCharacter={playPayload.character}
+              username={playPayload.userName}
+              studyCondition={condition}
+              embedInTabletSplit
+              studyContext={studyChatSessionContext}
+              onStudyLocked={(reason) => {
+                goSurvey(reason === "time_cap" ? "time_cap" : "inactive_timeout");
+              }}
+              onRequestEndSession={() => goSurvey("completed_content")}
+            />
+          )}
         </div>
-      </>
+      </div>
     );
   }
 

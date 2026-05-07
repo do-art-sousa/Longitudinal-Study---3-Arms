@@ -16,7 +16,14 @@ from urllib.parse import urlparse
 import dj_database_url
 from dotenv import load_dotenv
 
-load_dotenv()
+# Build paths inside the project like this: BASE_DIR / 'subdir'.
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Always load backend/.env (not dependent on shell cwd).
+load_dotenv(BASE_DIR / ".env")
+
+# OpenAI (chat, memory merge, RCQ scoring) — use django.conf.settings everywhere, not os.getenv at import time.
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
 
 
 def _host_from_url(url: str) -> str | None:
@@ -24,9 +31,6 @@ def _host_from_url(url: str) -> str | None:
         return None
     h = urlparse(str(url).strip()).hostname
     return h or None
-
-# Build paths inside the project like this: BASE_DIR / 'subdir'.
-BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/

@@ -1,4 +1,23 @@
 export const rcqData = {
+  /** Baseline RCQ (same text scope as sessão 3); shown before CAIQ-PANAS on global session 1. */
+  1: {
+    title: "Os Piratas — Pré-teste (Sessão 1)",
+    questions: [
+      { id: "L.1", text: "No início, Manuel e Ana estão no sótão. Indica dois objetos velhos que se encontram lá.", type: "text", answer: "Uma arca de madeira, jornais velhos, brinquedos, livros.", points: 1 },
+      { id: "L.2", text: "Onde é que o Manuel guarda o \"tesouro\" que a Ana quer tanto ver?", type: "text", answer: "Dentro de uma arca de madeira.", points: 1 },
+      { id: "L.3", text: "Qual é o objeto e a cor do \"tesouro\" que Manuel tira de dentro da arca?", type: "text", answer: "Um lenço vermelho.", points: 1 },
+      { id: "I.1", text: "Manuel fala sozinho ou lê em voz alta no início. O que é que este comportamento nos revela sobre o que ele sente?", type: "text", answer: "Revela a sua solidão, medo ou grande imaginação.", points: 2 },
+      { id: "I.2", text: "Como é que percebemos, através dos sons e luzes, que Manuel está a começar a entrar num mundo de fantasia?", type: "text", answer: "Pelo som do mar/ronca e pela luz azulada/misteriosa.", points: 2 },
+      { id: "I.3", text: "O Manuel diz que o mar é \"traiçoeiro\". Por que razão ele tem tanto medo do mar no início da história?", type: "text", answer: "Porque o mar \"levou\" o seu pai (naufrágio).", points: 2 },
+      { id: "V.1", text: "O cenário é uma \"casa pobre\". Significa que a casa é:", type: "text", answer: "Simples, com poucos recursos ou humilde.", points: 1 },
+      { id: "V.2", text: "Manuel \"hesita\" antes de abrir a arca. A palavra destacada indica que ele:", type: "text", answer: "Ficou na dúvida ou teve receio antes de agir.", points: 1 },
+      { id: "V.3", text: "Ouve-se o gemido da \"ronca\". A que som se refere esta palavra no contexto do porto?", type: "text", answer: "Ao som da sereia/apito dos barcos no porto.", points: 1 },
+      { id: "G.1", text: "Qual é o acontecimento principal que marca o fim deste primeiro bloco de leitura?", type: "text", answer: "A entrada/chegada dos piratas ao sótão.", points: 1 },
+      { id: "G.2", text: "A transição entre o Manuel sozinho e a entrada dos Piratas serve para:", type: "text", answer: "Para marcar a passagem do mundo real para o imaginário.", points: 1 },
+      { id: "G.3", text: "Que sentimento domina a conversa entre Manuel e Ana no sótão?", type: "text", answer: "Mistério, curiosidade ou medo.", points: 1 },
+      { id: "R.1", text: "Numera de 1 a 4 a ordem dos acontecimentos: (1.Sótão; 2.Abrir arca; 3.Aparece Ana; 4.Entram piratas)", type: "text", answer: "1.Sótão; 2.Abrir arca; 3.Aparece Ana; 4.Entram piratas.", points: 5 }
+    ]
+  },
   3: {
     title: "Os Piratas - Capítulos 1 ao 3",
     questions: [

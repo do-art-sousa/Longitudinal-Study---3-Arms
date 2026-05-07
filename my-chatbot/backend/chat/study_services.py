@@ -75,7 +75,8 @@ def global_session_index(week_index: int, slot_index: int) -> int:
 
 
 def rcq_required_for_global_index(global_index: int) -> bool:
-    return global_index in (3, 6, 9)
+    """RCQ after sessions 1 (baseline), 3, 6, and 9."""
+    return global_index in (1, 3, 6, 9)
 
 
 REQ_SCORE_KEYS = (
@@ -264,10 +265,17 @@ def progress_dict(participant: Participant) -> Dict[str, Any]:
     current = get_current_study_session(participant)
     payload: Dict[str, Any] = {
         "condition": participant.condition,
+        "displayName": (participant.display_name or "").strip(),
         "memoryEnabled": profile.memory_enabled,
         "maxSessionMinutes": profile.max_session_wall_minutes,
         "allowCharacterSelection": profile.allow_character_selection,
         "defaultCharacter": profile.default_character,
+        "skipChat": participant.condition == Participant.Condition.CONTROL,
+        "surveyInstrument": (
+            "panas_req"
+            if participant.condition == Participant.Condition.CONTROL
+            else "caiq_panas"
+        ),
         "releasedWeekIndex": released_week_index(),
         "sessions": [
             {
@@ -289,6 +297,8 @@ def progress_dict(participant: Participant) -> Dict[str, Any]:
         payload["focusSlotIndex"] = current.slot_index
         payload["focusGlobalSessionIndex"] = gidx
         payload["focusStatus"] = current.status
+        # True on global sessions 1, 3, 6, 9: RCQ block in PostSessionSurvey after session end.
+        # Frontend may use this to cue children (e.g. open activity drawer); not a separate sheet API.
         payload["showComprehension"] = rcq_required_for_global_index(gidx)
         payload["showLikert"] = True
         if current.status == StudySession.Status.IN_PROGRESS:
@@ -348,7 +358,7 @@ def comprehension_provided(data: Any) -> bool:
 def merge_conversation_into_memory(participant: Participant, conversation: Conversation) -> None:
     if participant.condition != Participant.Condition.PERSONALIZED:
         return
-    api_key = os.getenv("OPENAI_API_KEY")
+    api_key = getattr(settings, "OPENAI_API_KEY", "") or ""
     if not api_key:
         return
     try:

@@ -12,7 +12,7 @@ from django.db import IntegrityError, transaction
 from django.http import JsonResponse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_GET, require_POST
 
 from .models import Conversation, Participant, StudySession
 from .study_config import allowed_character, get_profile, resolve_enrollment_code
@@ -67,12 +67,25 @@ def _register_response_json(participant: Participant) -> dict:
         "participantId": str(participant.id),
         "authToken": participant.auth_token,
         "loginCode": participant.login_code or "",
+        "displayName": (participant.display_name or "").strip(),
         "condition": participant.condition,
         "maxSessionMinutes": profile.max_session_wall_minutes,
         "memoryEnabled": profile.memory_enabled,
         "allowCharacterSelection": profile.allow_character_selection,
         "defaultCharacter": profile.default_character,
     }
+
+
+@csrf_exempt
+@require_GET
+def study_enrollment_preview(request):
+    code = (request.GET.get("code") or "").strip()
+    if not code:
+        return JsonResponse({"valid": False})
+    condition = resolve_enrollment_code(code)
+    if not condition:
+        return JsonResponse({"valid": False})
+    return JsonResponse({"valid": True, "condition": condition})
 
 
 @csrf_exempt
@@ -93,6 +106,14 @@ def study_register(request):
     condition = resolve_enrollment_code(code)
     if not condition:
         return JsonResponse({"error": "Invalid enrollment code"}, status=400)
+
+    if condition == Participant.Condition.PERSONALIZED and not display_name:
+        return JsonResponse(
+            {
+                "error": "Indica o teu nome no campo acima — assim o companheiro pode dirigir-se a ti.",
+            },
+            status=400,
+        )
 
     pin_hash = hash_pin(str(pin).strip())
     participant = None
@@ -163,6 +184,7 @@ def study_login(request):
             "participantId": str(participant.id),
             "authToken": participant.auth_token,
             "loginCode": participant.login_code or normalized,
+            "displayName": (participant.display_name or "").strip(),
             "condition": participant.condition,
             "maxSessionMinutes": profile.max_session_wall_minutes,
             "memoryEnabled": profile.memory_enabled,
@@ -189,7 +211,15 @@ def study_session_start(request):
         return err
     body = _json_body(request)
     sid = body.get("studySessionId") or body.get("study_session_id")
-    user_name = (body.get("userName") or participant.display_name or "Participant")[:100]
+    raw_name = (body.get("userName") or "").strip()
+    if raw_name:
+        user_name = raw_name[:100]
+    elif participant.condition == Participant.Condition.GENERIC:
+        # Generic arm: do not fall back to enrollment display_name for the conversation / LLM context.
+        # UI shows "User" unless the client sends an explicit session name.
+        user_name = "User"
+    else:
+        user_name = (participant.display_name or "Participant")[:100]
     character = (body.get("character") or "").strip() or get_profile(
         participant.condition
     ).default_character

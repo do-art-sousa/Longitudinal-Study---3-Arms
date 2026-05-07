@@ -3,6 +3,7 @@ import json
 from django.http import HttpResponse
 from django.contrib.auth.decorators import user_passes_test
 from .models import StudySession, Conversation
+from .study_services import global_session_index
 
 @user_passes_test(lambda u: u.is_staff)
 def export_quantitative_data(request):
@@ -11,11 +12,12 @@ def export_quantitative_data(request):
     
     writer = csv.writer(response)
     writer.writerow([
-        'Participant ID', 'Condition', 'Session', 'Status',
-        'PA_Mean', 'NA_Mean', 'Overall_Affect', 'RCQ_Score',
+        'Participant ID', 'Condition', 'Week', 'Slot', 'GlobalSession', 'Status',
+        'CAIQ_Score', 'PANAS_Positive_Mean', 'PANAS_Negative_Mean', 'Overall_Affect',
+        'RCQ_Score',
         'REQ_SocialPresence', 'REQ_Connection', 'REQ_Responsiveness',
         'REQ_Autonomy', 'REQ_Motivation', 'REQ_LatentDemand',
-        'REQ_UnmetNeed', 'REQ_Isolation'
+        'REQ_UnmetNeed', 'REQ_Isolation',
     ])
     
     sessions = StudySession.objects.select_related("participant").all().order_by(
@@ -26,24 +28,28 @@ def export_quantitative_data(request):
         panas = s.caiq_panas_scores or {}
         req = s.req_scores or {}
         rcq = s.rcq_score.get('total_score') if s.rcq_score else None
-        
+        g_idx = global_session_index(s.week_index, s.slot_index)
+
         writer.writerow([
             s.participant.id,
             s.participant.condition,
+            s.week_index,
             s.slot_index,
+            g_idx,
             s.status,
-            panas.get('pa_mean'),
-            panas.get('na_mean'),
+            panas.get('caiq_score'),
+            panas.get('panas_positive'),
+            panas.get('panas_negative'),
             panas.get('overall_affect'),
             rcq,
-            req.get('social_presence'), # REQ-01
-            req.get('connection'),      # REQ-02
-            req.get('responsiveness'),  # REQ-03
-            req.get('autonomy'),        # REQ-04
-            req.get('motivation'),      # REQ-05
-            req.get('latent_demand'),   # REQ-06
-            req.get('unmet_need'),      # REQ-07
-            req.get('isolation')        # REQ-08
+            req.get('social_presence'),
+            req.get('connection'),
+            req.get('responsiveness'),
+            req.get('autonomy'),
+            req.get('motivation'),
+            req.get('latent_demand'),
+            req.get('unmet_need'),
+            req.get('isolation'),
         ])
     return response
 

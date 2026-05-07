@@ -9,9 +9,8 @@ export const activitySheets = {
     1: {
       title: "Sessão 1 (Marco)",
       steps: [
-        "Abertura: Mini-tutorial e check-in com o teu companheiro.",
-        "Leitura + Atividades (20 min): Lê o capítulo de 'Os Piratas' e cumpre a Ficha de Atividade abaixo.",
-        "Término (10 min): Responde ao Questionário Completo (16 itens) sobre a tua experiência."
+        "Leitura + Atividades (20 min): Lê o capítulo de 'Os Piratas' e cumpre a Ficha de Atividade abaixo (não te esqueças de clicar no quadrado da tua resposta, depois de feita).",
+        "Término: Responde ao Questionário sobre a tua experiência."
       ],
       tasks: [
         { id: "g1_1", label: "Definição: Pergunta o significado de uma palavra que não saibas." },
@@ -27,7 +26,7 @@ export const activitySheets = {
     2: {
       title: "Sessão 2 (Rotina)",
       steps: [
-        "Leitura Fluida (15 min): Foca-te na história com o teu companheiro.",
+        "Leitura Fluida (20 min): Foca-te na história com o teu companheiro.",
         "Término (5 min): Responde apenas às 4 perguntas rápidas (Interessado, Divertido, Aborrecido, Confuso)."
       ],
       rules: [
@@ -46,7 +45,7 @@ export const activitySheets = {
     3: {
       title: "Sessão 3 (Rotina)",
       steps: [
-        "Leitura Fluida (15 min): Foca-te na história com o teu companheiro.",
+        "Leitura Fluida (20 min): Foca-te na história com o teu companheiro.",
         "Término (5 min): Responde apenas às 4 perguntas rápidas (Interessado, Divertido, Aborrecido, Confuso)."
       ],
       rules: [
@@ -65,7 +64,7 @@ export const activitySheets = {
     4: {
       title: "Sessão 4 (Rotina)",
       steps: [
-        "Leitura Fluida (15 min): Foca-te na história com o teu companheiro.",
+        "Leitura Fluida (20 min): Foca-te na história com o teu companheiro.",
         "Término (5 min): Responde apenas às 4 perguntas rápidas (Interessado, Divertido, Aborrecido, Confuso)."
       ],
       rules: [
@@ -84,9 +83,8 @@ export const activitySheets = {
     5: {
       title: "Sessão 5 (Marco)",
       steps: [
-        "Abertura: Mini-tutorial e check-in.",
-        "Leitura + Atividades (20 min): Lê o capítulo de 'Os Piratas' e cumpre a Ficha de Atividade abaixo.",
-        "Término (10 min): Responde ao Questionário Completo (16 itens)."
+        "Leitura + Atividades (20 min): Lê o capítulo de 'Os Piratas' e cumpre a Ficha de Atividade abaixo (não te esqueças de clicar no quadrado da tua resposta, depois de feita).",
+        "Término: Responde ao Questionário sobre a tua experiência."
       ],
       tasks: [
         { id: "g5_1", label: "Definição: Pergunta o significado de uma palavra que não saibas." },
@@ -102,7 +100,7 @@ export const activitySheets = {
     6: {
       title: "Sessão 6 (Rotina)",
       steps: [
-        "Leitura Fluida (15 min): Foca-te na história com o teu companheiro.",
+        "Leitura Fluida (20 min): Foca-te na história com o teu companheiro.",
         "Término (5 min): Responde apenas às 4 perguntas rápidas (Interessado, Divertido, Aborrecido, Confuso)."
       ],
       rules: [
@@ -121,7 +119,7 @@ export const activitySheets = {
     7: {
       title: "Sessão 7 (Rotina)",
       steps: [
-        "Leitura Fluida (15 min): Foca-te na história com o teu companheiro.",
+        "Leitura Fluida (20 min): Foca-te na história com o teu companheiro.",
         "Término (5 min): Responde apenas às 4 perguntas rápidas (Interessado, Divertido, Aborrecido, Confuso)."
       ],
       rules: [
@@ -140,7 +138,7 @@ export const activitySheets = {
     8: {
       title: "Sessão 8 (Rotina)",
       steps: [
-        "Leitura Fluida (15 min): Foca-te na história com o teu companheiro.",
+        "Leitura Fluida (20 min): Foca-te na história com o teu companheiro.",
         "Término (5 min): Responde apenas às 4 perguntas rápidas (Interessado, Divertido, Aborrecido, Confuso)."
       ],
       rules: [
@@ -180,9 +178,8 @@ export const activitySheets = {
     1: {
       title: "Sessão 1 (Marco: Familiarização)",
       steps: [
-        "Abertura: Mini-tutorial e check-in inicial com o teu companheiro personalizado.",
-        "Leitura + Atividades (20 min): Lê o capítulo de 'Os Piratas' e cumpre a Ficha de Atividade abaixo.",
-        "Término (10 min): Responde ao Questionário Completo (16 itens) sobre a tua experiência."
+        "Leitura + Atividades (20 min): Lê o capítulo de 'Os Piratas' e cumpre a Ficha de Atividade abaixo (não te esqueças de clicar no quadrado da tua resposta, depois de feita).",
+        "Término: Responde ao Questionário sobre a tua experiência."
       ],
       tasks: [
         { id: "p1_1", label: "Definição: Pergunta o significado de uma palavra que não saibas." },
@@ -198,7 +195,7 @@ export const activitySheets = {
     2: {
       title: "Sessão 2 (Rotina: Interação Fluida)",
       steps: [
-        "Leitura Ativa (15 min): Foca-te na história. O teu companheiro irá lembrar-se do que discutiram antes.",
+        "Leitura Ativa (20 min): Foca-te na história. O teu companheiro irá lembrar-se do que discutiram antes.",
         "Término (5 min): Responde apenas às 4 perguntas rápidas (Interessado, Divertido, Aborrecido, Confuso)."
       ],
       rules: [
@@ -217,7 +214,7 @@ export const activitySheets = {
     3: {
       title: "Sessão 3 (Rotina: Interação Fluida)",
       steps: [
-        "Leitura Ativa (15 min): Foca-te na história. O teu companheiro irá lembrar-se do que discutiram antes.",
+        "Leitura Ativa (20 min): Foca-te na história. O teu companheiro irá lembrar-se do que discutiram antes.",
         "Término (5 min): Responde apenas às 4 perguntas rápidas (Interessado, Divertido, Aborrecido, Confuso)."
       ],
       rules: [
@@ -236,7 +233,7 @@ export const activitySheets = {
     4: {
       title: "Sessão 4 (Rotina: Interação Fluida)",
       steps: [
-        "Leitura Ativa (15 min): Foca-te na história. O teu companheiro irá lembrar-se do que discutiram antes.",
+        "Leitura Ativa (20 min): Foca-te na história. O teu companheiro irá lembrar-se do que discutiram antes.",
         "Término (5 min): Responde apenas às 4 perguntas rápidas (Interessado, Divertido, Aborrecido, Confuso)."
       ],
       rules: [
@@ -255,7 +252,7 @@ export const activitySheets = {
     5: {
       title: "Sessão 5 (Marco: Conexão e Memória)",
       steps: [
-        "Leitura Ativa (15 min): Foca-te na história. O teu companheiro irá lembrar-se do que discutiram antes."
+        "Leitura Ativa (20 min): Foca-te na história. O teu companheiro irá lembrar-se do que discutiram antes."
       ],
       tasks: [
         { id: "p5_1", label: "Definição: Pergunta o significado de uma palavra ou expressão do texto." },
@@ -271,7 +268,7 @@ export const activitySheets = {
     6: {
       title: "Sessão 6 (Rotina: Interação Fluida)",
       steps: [
-        "Leitura Ativa (15 min): Foca-te na história. O teu companheiro irá lembrar-se do que discutiram antes.",
+        "Leitura Ativa (20 min): Foca-te na história. O teu companheiro irá lembrar-se do que discutiram antes.",
         "Término (5 min): Responde apenas às 4 perguntas rápidas (Interessado, Divertido, Aborrecido, Confuso)."
       ],
       rules: [
@@ -290,7 +287,7 @@ export const activitySheets = {
     7: {
       title: "Sessão 7 (Rotina: Interação Fluida)",
       steps: [
-        "Leitura Ativa (15 min): Foca-te na história. O teu companheiro irá lembrar-se do que discutiram antes.",
+        "Leitura Ativa (20 min): Foca-te na história. O teu companheiro irá lembrar-se do que discutiram antes.",
         "Término (5 min): Responde apenas às 4 perguntas rápidas (Interessado, Divertido, Aborrecido, Confuso)."
       ],
       rules: [
@@ -309,7 +306,7 @@ export const activitySheets = {
     8: {
       title: "Sessão 8 (Rotina: Interação Fluida)",
       steps: [
-        "Leitura Ativa (15 min): Foca-te na história. O teu companheiro irá lembrar-se do que discutiram antes.",
+        "Leitura Ativa (20 min): Foca-te na história. O teu companheiro irá lembrar-se do que discutiram antes.",
         "Término (5 min): Responde apenas às 4 perguntas rápidas (Interessado, Divertido, Aborrecido, Confuso)."
       ],
       rules: [
@@ -328,7 +325,7 @@ export const activitySheets = {
     9: {
       title: "Sessão 9 (Marco: Mestria e Reflexão)",
       steps: [
-        "Leitura Ativa (15 min): Foca-te na história. O teu companheiro irá lembrar-se do que discutiram antes."
+        "Leitura Ativa (20 min): Foca-te na história. O teu companheiro irá lembrar-se do que discutiram antes."
       ],
       tasks: [
         { id: "p9_1", label: "Definição: Pergunta o significado de uma palavra ou expressão do texto." },

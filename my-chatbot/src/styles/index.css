@@ -22,10 +22,9 @@
     color: #535bf2;
   }
   
+  /* Layout for #root / App is defined in App.css (full-bleed study shell). */
   body {
     margin: 0;
-    display: flex;
-    place-items: center;
     min-width: 320px;
     min-height: 100vh;
   }

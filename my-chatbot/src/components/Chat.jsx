@@ -8,6 +8,14 @@ import React, {
 import { defaultCharacter, characters } from "../data/characters";
 import { getSheetForSession } from "../data/activity_sheets";
 import LatencyCue from "./LatencyCue";
+import ActivitySheetPanel from "./ActivitySheetPanel.jsx";
+import { useTwoMinuteTimerFlash } from "../hooks/useTwoMinuteTimerFlash.js";
+import { useActivitySheetAutosave } from "../hooks/useActivitySheetAutosave.js";
+import {
+  getRequiredCheckedTasksForSession,
+  countCompleteActivityTasks,
+} from "../utils/activitySheetRequirements.js";
+import { renderChatMessageText } from "../utils/renderChatMessageText.jsx";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
@@ -22,10 +30,33 @@ function mapApiMessagesToState(rows) {
   }));
 }
 
+const MAX_SIDEBAR_NAME_CHARS = 28;
+
+/** Keeps the grey name row readable if someone pastes a sentence into the name field. */
+function chatSidebarNameLabel(raw) {
+  const s = (raw || "").trim();
+  if (!s) return "Tu";
+  if (s.length <= MAX_SIDEBAR_NAME_CHARS) return s;
+  return `${s.slice(0, MAX_SIDEBAR_NAME_CHARS - 1)}…`;
+}
+
+function chatAvatarLetter(raw) {
+  const s = (raw || "").trim();
+  if (!s) return "🙂";
+  const firstWord = s.split(/\s+/)[0];
+  return firstWord.charAt(0).toUpperCase();
+}
+
+/** Backend / legacy fallbacks that should not appear as a “real” name in the generic UI. */
+const GENERIC_DISPLAY_PLACEHOLDER_NAMES = new Set(["participant", "anon", "unknown"]);
+
 export default function Chat({
   selectedCharacter,
   username,
+  studyCondition = null,
   studyContext = null,
+  /** When true, chat lives in the tablet right column (non-fixed layout); sheet drawer is scoped to that column (~38% width). */
+  embedInTabletSplit = false,
   onStudyLocked,
   onRequestEndSession,
 }) {
@@ -33,6 +64,30 @@ export default function Chat({
   const persona = isPersonalised
     ? characters[selectedCharacter] || defaultCharacter
     : defaultCharacter;
+
+  /** Generic study arm or standalone demo with the default coach — distinct UI (no “Reading Coach” labels, gradient avatars). */
+  const isGenericCoachUi =
+    studyCondition === "generic" ||
+    (studyCondition == null && selectedCharacter === "default");
+
+  const trimmedUsername = (username || "").trim();
+  const showBotNameLabel = !isGenericCoachUi;
+  /** Generic coach: show enrollment/session neutral label “User” unless a real in-session name was provided. */
+  const userLabelDisplay = (() => {
+    if (!isGenericCoachUi) return chatSidebarNameLabel(username ?? "");
+    if (
+      !trimmedUsername ||
+      GENERIC_DISPLAY_PLACEHOLDER_NAMES.has(trimmedUsername.toLowerCase())
+    )
+      return "User";
+    return chatSidebarNameLabel(username ?? "");
+  })();
+  const showUserNameLabel = true;
+
+  const usePersonalisedSheet =
+    studyCondition != null
+      ? studyCondition === "personalized"
+      : isPersonalised;
 
   const initial = username
     ? persona.initialMessage.replace("{username}", username)
@@ -44,7 +99,7 @@ export default function Chat({
     }
     return [{ from: "bot", text: initial }];
   });
-  
+
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isWaiting, setIsWaiting] = useState(false);
@@ -54,13 +109,19 @@ export default function Chat({
   // Activity Sheet State
   const [isActivityOpen, setIsActivityOpen] = useState(false);
   const [checkedTasks, setCheckedTasks] = useState({});
+  const [taskNotes, setTaskNotes] = useState({});
   const sessionForSheet =
     studyContext?.globalSessionIndex ?? studyContext?.slotIndex ?? 1;
-  const currentSheet = getSheetForSession(isPersonalised, sessionForSheet);
+  const requiredTasksForEnd = getRequiredCheckedTasksForSession(sessionForSheet);
+  const currentSheet = getSheetForSession(usePersonalisedSheet, sessionForSheet);
 
   const listRef = useRef(null);
   const endRef = useRef(null);
   const lockEmittedRef = useRef(false);
+  /** Prevents re-applying `studyContext.initialMessages` on every parent re-render (new array reference wipes chat). */
+  const studyMessagesHydratedForConvRef = useRef(null);
+  /** When backend `showComprehension` is true (RCQ after this session), auto-open sheet once as state-driven cue. */
+  const comprehensionCueOpenedRef = useRef(null);
 
   const scrollToBottom = useCallback(() => {
     endRef.current?.scrollIntoView({ block: "end" });
@@ -129,10 +190,14 @@ export default function Chat({
   );
 
   useEffect(() => {
-    if (studyContext?.conversationId) {
-      setConversationId(studyContext.conversationId);
-      if (studyContext.initialMessages?.length) setMessages(mapApiMessagesToState(studyContext.initialMessages));
-    }
+    const cid = studyContext?.conversationId;
+    if (!cid) return;
+    setConversationId(cid);
+    const initial = studyContext?.initialMessages;
+    if (!initial?.length) return;
+    if (studyMessagesHydratedForConvRef.current === cid) return;
+    studyMessagesHydratedForConvRef.current = cid;
+    setMessages(mapApiMessagesToState(initial));
   }, [studyContext?.conversationId, studyContext?.initialMessages]);
 
   useEffect(() => {
@@ -166,6 +231,23 @@ export default function Chat({
   }, [studyContext?.studySessionId]);
 
   useEffect(() => {
+    setIsActivityOpen(false);
+    comprehensionCueOpenedRef.current = null;
+  }, [studyContext?.studySessionId]);
+
+  useEffect(() => {
+    const sid = studyContext?.studySessionId;
+    if (!sid || !studyContext?.showComprehension || !currentSheet) return;
+    if (comprehensionCueOpenedRef.current === sid) return;
+    comprehensionCueOpenedRef.current = sid;
+    setIsActivityOpen(true);
+  }, [
+    studyContext?.studySessionId,
+    studyContext?.showComprehension,
+    currentSheet,
+  ]);
+
+  useEffect(() => {
     if (!studyContext?.sessionStartedAtISO || !studyContext?.maxSessionMinutes) {
       setSecondsUntilLock(null);
       return;
@@ -187,6 +269,11 @@ export default function Chat({
     return () => clearInterval(id);
   }, [studyContext?.sessionStartedAtISO, studyContext?.maxSessionMinutes, onStudyLocked]);
 
+  const timerEndingFlash = useTwoMinuteTimerFlash(
+    studyContext?.studySessionId,
+    secondsUntilLock
+  );
+
   const sendMessage = async () => {
     const value = input.trim();
     if (!value || isLoading || !conversationId) return;
@@ -196,6 +283,7 @@ export default function Chat({
     }
 
     const userMsg = { from: "user", text: value };
+
     setMessages((msgs) => [...msgs, userMsg]);
     setInput("");
     setIsLoading(true);
@@ -220,13 +308,28 @@ export default function Chat({
         setIsLoading(false);
         return;
       }
-      if (!res.ok) throw new Error("Request failed");
+      if (!res.ok) {
+        const detail =
+          (typeof raw.error === "string" && raw.error) ||
+          (typeof raw.detail === "string" && raw.detail) ||
+          `Não foi possível obter resposta (${res.status}).`;
+        throw new Error(detail);
+      }
+      const replyText = (raw.reply ?? "").trim();
+      if (!replyText) {
+        throw new Error("O servidor devolveu uma resposta vazia.");
+      }
 
-      const botMsg = { from: "bot", text: raw.reply };
+      const botMsg = { from: "bot", text: replyText };
       setMessages((msgs) => [...msgs, botMsg]);
       saveMessageToBackend("bot", botMsg.text);
-    } catch {
-      const errMsg = { from: "bot", text: "Desculpa, ocorreu um erro. Tenta novamente." };
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : "";
+      const friendly =
+        detail && detail.length < 400
+          ? detail
+          : "Desculpa, ocorreu um erro. Tenta novamente.";
+      const errMsg = { from: "bot", text: friendly };
       setMessages((msgs) => [...msgs, errMsg]);
       saveMessageToBackend("bot", errMsg.text);
     } finally {
@@ -239,16 +342,58 @@ export default function Chat({
     setCheckedTasks((prev) => ({ ...prev, [taskId]: !prev[taskId] }));
   };
 
+  const handleTaskNoteChange = (taskId, value) => {
+    setTaskNotes((prev) => ({ ...prev, [taskId]: value }));
+  };
+
+  const hasActivitySheet = Boolean(currentSheet?.tasks?.length);
+  const [sheetEndAttempted, setSheetEndAttempted] = useState(false);
+
+  useActivitySheetAutosave({
+    studySessionId: studyContext?.studySessionId,
+    sessionForSheet: sessionForSheet,
+    hasSheet: hasActivitySheet,
+    checkedTasks,
+    taskNotes,
+    setCheckedTasks,
+    setTaskNotes,
+  });
+
+  const checkedTaskCount = currentSheet?.tasks?.length
+    ? countCompleteActivityTasks(currentSheet.tasks, checkedTasks, taskNotes)
+    : 0;
+  const hasCheckedWithoutNote =
+    currentSheet?.tasks?.some(
+      (t) => checkedTasks[t.id] && !String(taskNotes[t.id] ?? "").trim()
+    ) ?? false;
+  const submissionOkForEnd =
+    !hasActivitySheet ||
+    (checkedTaskCount >= requiredTasksForEnd && !hasCheckedWithoutNote);
+
+  useEffect(() => {
+    if (submissionOkForEnd) setSheetEndAttempted(false);
+  }, [submissionOkForEnd]);
+
   const handleEndSessionClick = () => {
     if (isLoading) return;
-    onRequestEndSession?.(checkedTasks); 
+    if (hasActivitySheet) setSheetEndAttempted(true);
+    if (!submissionOkForEnd) return;
+    onRequestEndSession?.(checkedTasks);
   };
 
   const inputDisabled = isLoading || !conversationId || (studyContext && secondsUntilLock !== null && secondsUntilLock <= 0);
-  const warnFifteen = studyContext && secondsUntilLock !== null && secondsUntilLock > 0 && secondsUntilLock <= 300;
+
+  const drawerEmb = embedInTabletSplit ? " activity-drawer--embedded" : "";
+
+  const sheetOpenClass =
+    embedInTabletSplit && currentSheet && isActivityOpen ? " chat-screen--embedded--sheet-open" : "";
 
   return (
-    <div className="chat-screen">
+    <div
+      className={`chat-screen${embedInTabletSplit ? " chat-screen--embedded" : ""}${sheetOpenClass}${
+        isGenericCoachUi ? " chat-screen--generic-coach" : ""
+      }`}
+    >
       <span className="corner tl" aria-hidden="true"></span>
       <span className="corner tr" aria-hidden="true"></span>
       <span className="corner bl" aria-hidden="true"></span>
@@ -256,22 +401,43 @@ export default function Chat({
 
       <header className="chat-hero">
         <h1 className="hero-title xl">Vamos explorar um mundo de histórias!</h1>
-        <p className="hero-sub">
-          A conversar com {isPersonalised ? persona.name : "Reading Coach"}
-        </p>
+        {!isGenericCoachUi ? (
+          <p className="hero-sub">
+            A conversar com {isPersonalised ? persona.name : "Reading Coach"}
+          </p>
+        ) : null}
+        {studyContext?.globalSessionIndex != null ? (
+          <p className="study-session-book-meta">
+            Leitura da sessão: «Os Piratas» · Sessão {studyContext.globalSessionIndex}
+          </p>
+        ) : null}
+        {studyContext?.showComprehension ? (
+          <p className="session-rcq-cue" role="status">
+            Nesta sessão, quando terminares, vais responder a perguntas sobre a história (compreensão).
+            A ficha à direita abre automaticamente — usa-a durante a leitura.
+          </p>
+        ) : null}
         <div className="chat-status-bar">
           {studyContext && secondsUntilLock !== null && (
-            <p className={`chat-timer ${warnFifteen ? "warning" : ""}`}>
+            <p
+              className={`chat-timer${timerEndingFlash ? " chat-timer--ending-flash" : ""}`}
+              role="status"
+            >
               Tempo: {Math.floor(secondsUntilLock / 60)}:{String(secondsUntilLock % 60).padStart(2, "0")}
             </p>
           )}
-          {currentSheet && (
-            <button className="toggle-activity-btn" onClick={() => setIsActivityOpen(!isActivityOpen)}>
-              📝 Ficha de Atividades
-            </button>
-          )}
           {studyContext && onRequestEndSession && (
-            <button type="button" className="study-secondary-btn chat-end-btn" onClick={handleEndSessionClick} disabled={isLoading}>
+            <button
+              type="button"
+              className="study-secondary-btn chat-end-btn"
+              onClick={handleEndSessionClick}
+              disabled={isLoading}
+              title={
+                !submissionOkForEnd
+                  ? `Completa pelo menos ${requiredTasksForEnd} tarefas com resposta escrita na caixa.`
+                  : undefined
+              }
+            >
               Terminar sessão
             </button>
           )}
@@ -279,6 +445,38 @@ export default function Chat({
       </header>
 
       <div className="chat-and-activity-wrapper">
+        {currentSheet ? (
+          <>
+            <button
+              type="button"
+              className={`activity-drawer-tab-fixed${drawerEmb} ${isActivityOpen ? "is-open" : ""}`}
+              aria-expanded={isActivityOpen}
+              aria-controls="activity-sheet-panel"
+              onClick={() => setIsActivityOpen((o) => !o)}
+            >
+              <span className="activity-drawer-tab-chevron" aria-hidden>
+                {isActivityOpen ? "›" : "‹"}
+              </span>
+              <span className="activity-drawer-tab-label">Ficha</span>
+            </button>
+            <aside
+              id="activity-sheet-panel"
+              className={`activity-drawer-panel-fixed${drawerEmb} ${isActivityOpen ? "is-open" : ""}`}
+              aria-hidden={!isActivityOpen}
+            >
+              <ActivitySheetPanel
+                currentSheet={currentSheet}
+                checkedTasks={checkedTasks}
+                onTaskToggle={handleTaskToggle}
+                taskNotes={taskNotes}
+                onTaskNoteChange={handleTaskNoteChange}
+                requiredCheckedTasks={requiredTasksForEnd}
+                highlightNoteErrors={sheetEndAttempted}
+              />
+            </aside>
+          </>
+        ) : null}
+
         <div className="chat-main-area">
           <div className="chat-body">
             <div className="messages" ref={listRef}>
@@ -286,29 +484,48 @@ export default function Chat({
                 const isBot = m.from === "bot";
                 return (
                   <div key={i} className={`msg-row ${isBot ? "left" : "right"}`}>
-                    <div className={`name-label ${isBot ? "left" : "right"}`}>
-                      {isBot ? persona.name : username || "Tu"}
-                      {!isBot && <span className="name-emoji" aria-hidden></span>}
-                    </div>
-                    {isBot ? (
-                      <div className="avatar-circle bot-avatar" aria-hidden>
-                        {persona.image && <img src={persona.image} alt={persona.name} className="avatar-img" />}
+                    {(isBot ? showBotNameLabel : showUserNameLabel) ? (
+                      <div
+                        className={`name-label ${isBot ? "left" : "right"}`}
+                        title={
+                          !isBot && trimmedUsername && userLabelDisplay !== "User"
+                            ? trimmedUsername
+                            : undefined
+                        }
+                      >
+                        {isBot ? persona.name : userLabelDisplay}
+                        {!isBot && <span className="name-emoji" aria-hidden></span>}
                       </div>
+                    ) : null}
+                    {isBot ? (
+                      isGenericCoachUi ? (
+                        <div className="avatar-circle bot-avatar avatar-generic-coach" aria-hidden />
+                      ) : (
+                        <div className="avatar-circle bot-avatar" aria-hidden>
+                          {persona.image && <img src={persona.image} alt={persona.name} className="avatar-img" />}
+                        </div>
+                      )
+                    ) : isGenericCoachUi ? (
+                      <div className="avatar-circle user-avatar avatar-generic-user" aria-hidden />
                     ) : (
                       <div className="avatar-circle user-avatar" aria-hidden>
-                        <span className="user-avatar-text">{username?.[0]?.toUpperCase() || "🙂"}</span>
+                        <span className="user-avatar-text">{chatAvatarLetter(username)}</span>
                       </div>
                     )}
-                    <div className={`bubble ${isBot ? "bot" : "user"}`}>{m.text}</div>
+                    <div className={`bubble ${isBot ? "bot" : "user"}`}>{renderChatMessageText(m.text)}</div>
                   </div>
                 );
               })}
               {isLoading && (
                 <div className="msg-row left">
-                  <div className="name-label left">{persona.name}</div>
-                  <div className="avatar-circle bot-avatar" aria-hidden>
-                    {persona.image && <img src={persona.image} alt={persona.name} className="avatar-img" />}
-                  </div>
+                  {showBotNameLabel ? <div className="name-label left">{persona.name}</div> : null}
+                  {isGenericCoachUi ? (
+                    <div className="avatar-circle bot-avatar avatar-generic-coach" aria-hidden />
+                  ) : (
+                    <div className="avatar-circle bot-avatar" aria-hidden>
+                      {persona.image && <img src={persona.image} alt={persona.name} className="avatar-img" />}
+                    </div>
+                  )}
                   <div className="bubble bot"><em>...</em></div>
                 </div>
               )}
@@ -316,57 +533,34 @@ export default function Chat({
               <div ref={endRef} />
             </div>
           </div>
-        </div>
 
-        {/* Sliding Activity Drawer */}
-        <div className={`activity-drawer ${isActivityOpen ? 'open' : ''}`}>
-          <div className="drawer-header">
-            {currentSheet?.title || "Ficha de Atividade"}
-          </div>
-          <div className="drawer-instructions" style={{ fontSize: "14px", color: "#475569", marginBottom: "16px" }}>
-            <strong>Passos da Sessão:</strong>
-            <ul style={{ paddingLeft: "20px", marginTop: "8px" }}>
-              {currentSheet?.steps.map((step, idx) => (
-                <li key={idx}>{step}</li>
-              ))}
-            </ul>
-          </div>
-          <div className="task-list">
-            <strong style={{ fontSize: "14px", color: "#1e293b" }}>Contrato de Interação:</strong>
-            {currentSheet?.tasks.map((task) => (
-              <label 
-                key={task.id} 
-                className={`task-item ${checkedTasks[task.id] ? "completed" : ""}`}
-              >
-                <input 
-                  type="checkbox" 
-                  checked={!!checkedTasks[task.id]} 
-                  onChange={() => handleTaskToggle(task.id)}
-                />
-                <span>{task.label}</span>
-              </label>
-            ))}
-          </div>
+          <footer className="chat-footer-stack">
+            <div className="input-wrap">
+              <input
+                className="chat-input"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && !inputDisabled && sendMessage()}
+                placeholder={!conversationId ? "A preparar a conversa..." : inputDisabled ? "Tempo da sessão terminou." : "Escreve aqui..."}
+                disabled={inputDisabled}
+              />
+              <button className="send-btn" onClick={sendMessage} disabled={inputDisabled} aria-label="Enviar" title="Enviar">
+                <svg className="send-btn-icon" viewBox="0 0 24 24" aria-hidden>
+                  <path fill="currentColor" d="M9 5.25L18.75 12 9 18.75z" />
+                </svg>
+              </button>
+            </div>
+            <div className="chat-nudge">
+              <em>Lembra-te: as minhas respostas são automáticas. Verifica se os factos estão corretos!</em>
+            </div>
+            {studyContext && hasActivitySheet && !submissionOkForEnd ? (
+              <p className="activity-submission-hint activity-submission-hint--inline" role="status">
+                Completa pelo menos {requiredTasksForEnd} tarefas com resposta escrita na caixa para terminares
+                a sessão. ({checkedTaskCount}/{requiredTasksForEnd})
+              </p>
+            ) : null}
+          </footer>
         </div>
-      </div>
-
-      <div className="input-wrap">
-        <input
-          className="chat-input"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && !inputDisabled && sendMessage()}
-          placeholder={!conversationId ? "A preparar a conversa..." : inputDisabled ? "Tempo da sessão terminou." : "Escreve aqui..."}
-          disabled={inputDisabled}
-        />
-        <button className="send-btn" onClick={sendMessage} disabled={inputDisabled} aria-label="Enviar" title="Enviar">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
-            <path d="M5 12L3 4l18 8-18 8 2-8 10-0" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </button>
-      </div>
-      <div className="chat-nudge">
-        <em>Lembra-te: as minhas respostas são automáticas. Usa o teu "olhar de detetive" para conferir se os factos da peça estão corretos!</em>
       </div>
     </div>
   );

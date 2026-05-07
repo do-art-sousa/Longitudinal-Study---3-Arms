@@ -6,7 +6,15 @@
 
 export const CAIQ_PANAS_INSTRUCTION = "Pensa na sessão de hoje em relação à tua interação. Diz-nos quanto concordas com cada frase. Não há respostas certas nem erradas.";
 
+/** Shown under CAIQ / control REQ (agreement scale with emojis). */
+export const CAIQ_AGREEMENT_EMOJI_LEGEND =
+  "😢 Discordo totalmente | 😕 Discordo | 😐 Neutro | 🙂 Concordo | 😊 Concordo totalmente";
+
 export const PANAS_INSTRUCTION = "Durante a sessão de leitura de hoje, eu senti-me...";
+
+/** Verbal anchors under the PANAS affect block (same as intensity labels on PANAS_LIKERT_SCALE). */
+export const PANAS_SCALE_LEGEND =
+  "1 = Nada ou muito pouco | 2 = Um pouco | 3 = Moderadamente | 4 = Bastante | 5 = Muitíssimo";
 
 export const LIKERT_SCALE = [
   { value: 1, label: "Discordo totalmente", emoji: "😢" },
@@ -17,11 +25,11 @@ export const LIKERT_SCALE = [
 ];
 
 export const PANAS_LIKERT_SCALE = [
-  { value: 1, label: "Nada ou muito pouco" },
-  { value: 2, label: "Um pouco" },
-  { value: 3, label: "Moderadamente" },
-  { value: 4, label: "Bastante" },
-  { value: 5, label: "Muitíssimo" }
+  { value: 1, label: "Nada ou muito pouco", emoji: "😶" },
+  { value: 2, label: "Um pouco", emoji: "😕" },
+  { value: 3, label: "Moderadamente", emoji: "😐" },
+  { value: 4, label: "Bastante", emoji: "🙂" },
+  { value: 5, label: "Muitíssimo", emoji: "😄" },
 ];
 
 // CAIQ items (19 items for Full, 6 items for Mini)
@@ -135,13 +143,14 @@ export const MINI_CAIQ_PANAS = {
   total_items: 10
 };
 
-export function getSurveyForSession(slotIndex) {
-  // Full survey for sessions 1, 5, 9
-  if ([1, 5, 9].includes(slotIndex)) {
+/** @param {number} globalSessionIndex 1–9 overall session index in the study */
+export function getSurveyForSession(globalSessionIndex) {
+  // Full survey for global sessions 1, 5, 9 (19 CAIQ + 10 PANAS)
+  if ([1, 5, 9].includes(globalSessionIndex)) {
     return FULL_CAIQ_PANAS;
   }
-  // Mini survey for sessions 2, 3, 4, 6, 7, 8
-  if ([2, 3, 4, 6, 7, 8].includes(slotIndex)) {
+  // Mini for global sessions 2, 3, 4, 6, 7, 8 (6 CAIQ + 4 PANAS)
+  if ([2, 3, 4, 6, 7, 8].includes(globalSessionIndex)) {
     return MINI_CAIQ_PANAS;
   }
   return null;

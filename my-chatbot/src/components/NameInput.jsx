@@ -1,15 +1,22 @@
 import React, { useEffect, useState } from "react";
 
-export default function NameInput({ onSubmit }) {
+const MAX_NAME_LEN = 48;
+
+export default function NameInput({ onSubmit, enrollmentName = "" }) {
   const [name, setName] = useState("");
 
   useEffect(() => {
+    const seed = (enrollmentName || "").trim();
+    if (seed) {
+      setName(seed.slice(0, MAX_NAME_LEN));
+      return;
+    }
     const saved = localStorage.getItem("userName");
-    if (saved && saved.trim()) setName(saved);
-  }, []);
+    if (saved && saved.trim()) setName(saved.slice(0, MAX_NAME_LEN));
+  }, [enrollmentName]);
 
   const handleSubmit = () => {
-    const trimmed = name.trim();
+    const trimmed = name.trim().slice(0, MAX_NAME_LEN);
     if (!trimmed) return;
 
     localStorage.setItem("userName", trimmed);
@@ -31,7 +38,8 @@ export default function NameInput({ onSubmit }) {
             type="text"
             value={name}
             autoFocus
-            onChange={(e) => setName(e.target.value)}
+            maxLength={MAX_NAME_LEN}
+            onChange={(e) => setName(e.target.value.slice(0, MAX_NAME_LEN))}
             placeholder="Escreve o teu nome..."
             onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
           />

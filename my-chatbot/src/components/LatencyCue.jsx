@@ -3,8 +3,7 @@ import '../styles/LatencyCue.css';
 
 /**
  * LatencyCue Component
- * Displays a "reading-with-you" message if the AI response takes longer than 2 seconds.
- * This provides reassurance to the child that the system is thinking.
+ * Shows a short “writing…” cue if the AI response takes longer than 2 seconds.
  */
 export default function LatencyCue({ isWaiting }) {
   const [showCue, setShowCue] = useState(false);
@@ -28,7 +27,7 @@ export default function LatencyCue({ isWaiting }) {
 
   return (
     <div className="latency-cue">
-      <p>📖 Estou a ler a história contigo...</p>
+      <p>A escrever...</p>
     </div>
   );
 }

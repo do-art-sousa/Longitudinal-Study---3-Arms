@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 const STUDY_LOGIN_CODE_KEY = "studyLoginCode";
@@ -26,21 +26,43 @@ export default function EnrollmentGate({ onEnrolled }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [registeredInfo, setRegisteredInfo] = useState(null);
+  const [codePreview, setCodePreview] = useState(null);
+
+  useEffect(() => {
+    const trimmed = code.trim();
+    if (!trimmed) {
+      setCodePreview(null);
+      return;
+    }
+    const t = setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `${API_URL}/api/study/enrollment-preview/?code=${encodeURIComponent(trimmed)}`
+        );
+        const data = await res.json().catch(() => ({}));
+        setCodePreview(data);
+      } catch {
+        setCodePreview(null);
+      }
+    }, 400);
+    return () => clearTimeout(t);
+  }, [code]);
 
   const submitFirstTime = async (e) => {
     e.preventDefault();
     setError("");
 
-    // 1. VALIDATION: Check if code contains "pers" or "gen"
-    const lowerCode = code.trim().toLowerCase();
-    if (!lowerCode.includes("pers") && !lowerCode.includes("gen")) {
-      setError("Código inválido. Tem de incluir 'Pers' ou 'Gen'.");
+    if (pin.trim() !== pinConfirm.trim()) {
+      setError("Os PINs não coincidem. Tenta novamente.");
       return;
     }
 
-    // 2. VALIDATION: Check if PINs match
-    if (pin.trim() !== pinConfirm.trim()) {
-      setError("Os PINs não coincidem. Tenta novamente.");
+    if (
+      codePreview?.valid &&
+      codePreview.condition === "personalized" &&
+      !displayName.trim()
+    ) {
+      setError("Só falta o teu nome no campo acima, para o companheiro te poder tratar por ti.");
       return;
     }
 
@@ -96,6 +118,10 @@ export default function EnrollmentGate({ onEnrolled }) {
       if (data.loginCode) {
         localStorage.setItem(STUDY_LOGIN_CODE_KEY, data.loginCode);
       }
+      const dn = (data.displayName || "").trim();
+      if (dn) {
+        localStorage.setItem("userName", dn);
+      }
       onEnrolled(data.authToken);
     } catch {
       setError("Não foi possível ligar ao servidor.");
@@ -125,7 +151,11 @@ export default function EnrollmentGate({ onEnrolled }) {
             type="button"
             className="study-primary-btn"
             style={{width: "100%"}}
-            onClick={() => onEnrolled(registeredInfo.authToken)}
+            onClick={() => {
+              const dn = displayName.trim();
+              if (dn) localStorage.setItem("userName", dn);
+              onEnrolled(registeredInfo.authToken);
+            }}
           >
             Entrar no estudo
           </button>
@@ -208,11 +238,7 @@ export default function EnrollmentGate({ onEnrolled }) {
         ) : (
           <form key="enroll-first" onSubmit={submitFirstTime} className="enroll-form" autoComplete="off">
             <p className="hero-sub enroll-mode-hint" style={{textAlign: "center", marginBottom: "24px", lineHeight: "1.5"}}>
-              Usa o <strong>código de inscrição</strong> que o estudo te deu.
-              <br/><br/>
-              <span className="enroll-hint-secondary" style={{fontSize: "13px"}}>
-                (Tem de incluir a palavra "Pers" ou "Gen")
-              </span>
+              Usa o <strong>código de inscrição</strong> que o estudo te deu (o servidor valida o código).
             </p>
             
             <div className="input-group">
@@ -229,7 +255,14 @@ export default function EnrollmentGate({ onEnrolled }) {
             </div>
             
             <div className="input-group">
-              <label htmlFor="study-enroll-display-name">Nome (opcional)</label>
+              <label htmlFor="study-enroll-display-name">
+                Nome
+                {codePreview?.valid && codePreview.condition === "personalized"
+                  ? " (obrigatório)"
+                  : codePreview?.valid
+                    ? " (opcional)"
+                    : ""}
+              </label>
               <input
                 id="study-enroll-display-name"
                 className="enroll-field-input"
@@ -237,6 +270,10 @@ export default function EnrollmentGate({ onEnrolled }) {
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
                 autoComplete="name"
+                required={
+                  Boolean(codePreview?.valid) &&
+                  codePreview.condition === "personalized"
+                }
               />
             </div>
             
