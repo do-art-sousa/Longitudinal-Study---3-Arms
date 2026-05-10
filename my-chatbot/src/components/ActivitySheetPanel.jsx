@@ -66,7 +66,16 @@ export default function ActivitySheetPanel({
                   checked={!!checkedTasks[task.id]}
                   onChange={() => onTaskToggle(task.id)}
                 />
-                <span>{task.label}</span>
+                {/* Question/prompt is shown in bold so children can spot it
+                    quickly when scanning the sheet. The inline style is a
+                    belt-and-braces against any cached CSS that might be
+                    inheriting a lower weight from the parent label. */}
+                <strong
+                  className="task-block-question"
+                  style={{ fontWeight: 700 }}
+                >
+                  {task.label}
+                </strong>
               </label>
               <label className="task-note-label" htmlFor={`task-note-${task.id}`}>
                 A tua resposta ou notas

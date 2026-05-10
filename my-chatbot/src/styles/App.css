@@ -1100,6 +1100,16 @@ body {
   cursor: pointer;
 }
 
+/* Task prompt itself ("Definição: Pergunta o significado…") — bold + slightly
+ * darker than the rest of the row so children can scan the sheet quickly.
+ * Specificity is bumped (.task-block .task-block-check ...) and !important is
+ * used to override any inherited weight from the flexbox label parent. */
+.task-block-question,
+.task-block .task-block-check .task-block-question {
+  font-weight: 700 !important;
+  color: #1e293b;
+}
+
 .task-note-label {
   font-size: 12px;
   font-weight: 600;

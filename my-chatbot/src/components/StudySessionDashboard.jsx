@@ -9,6 +9,9 @@ import { clearActivitySheetDraft } from "../utils/activitySheetDraft.js";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
+/** Network call timeout (ms) — prevents the UI from hanging on flaky tablet Wi-Fi. */
+const STUDY_FETCH_TIMEOUT_MS = 10_000;
+
 async function studyFetch(path, authToken, options = {}) {
   const headers = {
     ...(options.headers || {}),
@@ -17,7 +20,22 @@ async function studyFetch(path, authToken, options = {}) {
   if (options.body && !headers["Content-Type"]) {
     headers["Content-Type"] = "application/json";
   }
-  return fetch(`${API_URL}${path}`, { ...options, headers });
+  // AbortController + timeout: if the backend doesn't respond, throw instead of hang.
+  // External AbortSignal (if the caller passed one) wins; otherwise we own the timeout.
+  const controller = new AbortController();
+  const timeoutId = setTimeout(
+    () => controller.abort(new DOMException("timeout", "AbortError")),
+    options.timeoutMs || STUDY_FETCH_TIMEOUT_MS,
+  );
+  try {
+    return await fetch(`${API_URL}${path}`, {
+      ...options,
+      headers,
+      signal: options.signal || controller.signal,
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 const STUDY_CHARACTER_KEY = "studySelectedCharacter";
@@ -34,10 +52,39 @@ function characterDisplayName(key) {
   return persona?.name || key;
 }
 
+/** Renders backend `nextAvailableAt` (ISO string) as a child-friendly hint:
+ *  "amanhã" if it's the next calendar day in the user's locale,
+ *  "no dia DD/MM" otherwise. Falls back to the raw string on any error. */
+function formatNextAvailable(iso) {
+  try {
+    const target = new Date(iso);
+    if (Number.isNaN(target.getTime())) return iso;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const targetDay = new Date(target);
+    targetDay.setHours(0, 0, 0, 0);
+    const oneDay = 86_400_000;
+    const diffDays = Math.round((targetDay - today) / oneDay);
+    if (diffDays <= 0) return "em breve";
+    if (diffDays === 1) return "amanhã";
+    return `no dia ${String(targetDay.getDate()).padStart(2, "0")}/${String(
+      targetDay.getMonth() + 1
+    ).padStart(2, "0")}`;
+  } catch {
+    return iso;
+  }
+}
+
+/** Child-friendly message shown when the backend is unreachable from a tablet. */
+const CONNECTION_FAILED_MESSAGE =
+  "Não conseguimos ligar agora. Pede ajuda a um adulto e tenta outra vez.";
+
 export default function StudySessionDashboard({ authToken, onLogout }) {
   const [progress, setProgress] = useState(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
+  /** Set when the network call fails (offline, server down, timeout). Shows the retry screen. */
+  const [connectionError, setConnectionError] = useState(false);
   const [username, setUsername] = useState(
     () => localStorage.getItem("userName") || ""
   );
@@ -48,7 +95,16 @@ export default function StudySessionDashboard({ authToken, onLogout }) {
 
   const loadProgress = useCallback(async () => {
     setErr("");
-    const res = await studyFetch("/api/study/progress/", authToken);
+    setConnectionError(false);
+    let res;
+    try {
+      res = await studyFetch("/api/study/progress/", authToken);
+    } catch {
+      // Network error / timeout / browser offline — surface a friendly retry screen
+      // instead of leaving the child stuck on "A carregar…".
+      setConnectionError(true);
+      return;
+    }
     if (res.status === 401) {
       onLogout();
       return;
@@ -85,7 +141,18 @@ export default function StudySessionDashboard({ authToken, onLogout }) {
     let cancelled = false;
     (async () => {
       setLoading(true);
-      const res = await studyFetch("/api/study/progress/", authToken);
+      setConnectionError(false);
+      let res;
+      try {
+        res = await studyFetch("/api/study/progress/", authToken);
+      } catch {
+        // Backend unreachable: don't leave the tablet stuck on "A carregar…".
+        if (!cancelled) {
+          setConnectionError(true);
+          setLoading(false);
+        }
+        return;
+      }
       if (cancelled) return;
       if (res.status === 401) {
         onLogout();
@@ -104,6 +171,18 @@ export default function StudySessionDashboard({ authToken, onLogout }) {
       cancelled = true;
     };
   }, [authToken, onLogout]);
+
+  /** Retry handler used by the "Tentar outra vez" button on the connection-failed screen. */
+  const retryLoad = useCallback(async () => {
+    setLoading(true);
+    setConnectionError(false);
+    setErr("");
+    try {
+      await loadProgress();
+    } finally {
+      setLoading(false);
+    }
+  }, [loadProgress]);
 
   const condition = progress?.condition;
   const personalized = condition === "personalized";
@@ -162,12 +241,25 @@ export default function StudySessionDashboard({ authToken, onLogout }) {
       condition === "generic"
         ? username?.trim() || ""
         : username?.trim() || progress?.displayName?.trim() || "";
+    // Generic arm behaves like a vanilla GenAI: no opener from the bot, the
+    // user types first. Control has no chat. Personalized keeps the persona's
+    // opening line — with two flavours:
+    //   • Session 1 (first meeting): persona.initialMessage
+    //   • Sessions 2–9 (returning): persona.returningMessage if defined,
+    //     otherwise fall back to initialMessage.
+    // {username} is substituted in either template when a name is available.
+    const sessionNumber = progress?.focusGlobalSessionIndex ?? 1;
+    const isReturningSession = sessionNumber > 1;
+    const messageTemplate =
+      isReturningSession && persona.returningMessage
+        ? persona.returningMessage
+        : persona.initialMessage;
     const initialRaw =
-      condition === "control"
+      condition === "control" || condition === "generic"
         ? ""
         : nameForSession
-          ? persona.initialMessage.replace("{username}", nameForSession)
-          : persona.initialMessage;
+          ? messageTemplate.replace("{username}", nameForSession)
+          : messageTemplate.replace("{username}", "");
 
     const startBody = {
       studySessionId: focusId,
@@ -233,6 +325,30 @@ export default function StudySessionDashboard({ authToken, onLogout }) {
     setPhase("lobby");
     await loadProgress();
   };
+
+  // Connection failed: show a child-friendly retry screen instead of the spinner.
+  // This is the screen children see on tablets when the Wi-Fi blips or the server
+  // is briefly unreachable — without it the UI hangs forever on "A carregar…".
+  if (connectionError) {
+    return (
+      <div className="study-lobby">
+        <header className="chat-hero">
+          <h1 className="hero-title xl">Sem ligação 📡</h1>
+          <p className="hero-sub">{CONNECTION_FAILED_MESSAGE}</p>
+        </header>
+        <div className="toolbar study-toolbar">
+          <button
+            type="button"
+            className="study-primary-btn"
+            onClick={retryLoad}
+            disabled={loading}
+          >
+            {loading ? "A tentar…" : "Tentar outra vez"}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (loading && !progress) {
     return (
@@ -412,7 +528,9 @@ export default function StudySessionDashboard({ authToken, onLogout }) {
         ) : (
           <p className="hero-sub">
             {progress?.focusSessionId
-              ? "Esta sessão não está disponível ainda."
+              ? progress?.nextAvailableAt
+                ? `Esta sessão fica disponível ${formatNextAvailable(progress.nextAvailableAt)}.`
+                : "Esta sessão não está disponível ainda."
               : progress?.message || "Sem sessões em curso."}
           </p>
         )}

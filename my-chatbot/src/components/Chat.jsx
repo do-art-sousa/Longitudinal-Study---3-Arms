@@ -11,6 +11,7 @@ import LatencyCue from "./LatencyCue";
 import ActivitySheetPanel from "./ActivitySheetPanel.jsx";
 import { useTwoMinuteTimerFlash } from "../hooks/useTwoMinuteTimerFlash.js";
 import { useActivitySheetAutosave } from "../hooks/useActivitySheetAutosave.js";
+import { useStudyHeartbeat } from "../hooks/useStudyHeartbeat.js";
 import {
   getRequiredCheckedTasksForSession,
   countCompleteActivityTasks,
@@ -21,6 +22,26 @@ const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 if (import.meta.env.DEV) {
   console.log("API URL:", API_URL);
+}
+
+/** Per-call timeouts. The chat endpoint hits the LLM so we give it a bigger
+ *  budget; save-message and start-conversation are quick DB writes. */
+const CHAT_FETCH_TIMEOUT_MS = 30_000;
+const SHORT_FETCH_TIMEOUT_MS = 10_000;
+
+/** fetch() wrapper with an AbortController-backed timeout so flaky tablet
+ *  Wi-Fi can never leave the chat loading spinner stuck forever. */
+async function fetchWithTimeout(url, options = {}, timeoutMs = SHORT_FETCH_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(
+    () => controller.abort(new DOMException("timeout", "AbortError")),
+    timeoutMs,
+  );
+  try {
+    return await fetch(url, { ...options, signal: options.signal || controller.signal });
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 function mapApiMessagesToState(rows) {
@@ -97,6 +118,11 @@ export default function Chat({
     if (studyContext?.initialMessages?.length) {
       return mapApiMessagesToState(studyContext.initialMessages);
     }
+    // Generic arm: the bot must NOT speak first — the user leads the conversation,
+    // exactly like opening ChatGPT to a blank thread. Skip the local persona opener.
+    if (studyCondition === "generic") {
+      return [];
+    }
     return [{ from: "bot", text: initial }];
   });
 
@@ -171,10 +197,10 @@ export default function Chat({
       if (studyContext?.authToken) headers.Authorization = `Bearer ${studyContext.authToken}`;
 
       try {
-        const res = await fetch(`${API_URL}/api/save-message/`, {
+        const res = await fetchWithTimeout(`${API_URL}/api/save-message/`, {
           method: "POST", headers,
           body: JSON.stringify({ conversationId, sender, content, meta }),
-        });
+        }, SHORT_FETCH_TIMEOUT_MS);
         if (res.status === 403) {
           const d = await res.json().catch(() => ({}));
           if (d.sessionLocked && !lockEmittedRef.current) {
@@ -205,10 +231,10 @@ export default function Chat({
     async function startConversation() {
       if (studyContext?.conversationId) return;
       try {
-        const res = await fetch(`${API_URL}/api/start-conversation/`, {
+        const res = await fetchWithTimeout(`${API_URL}/api/start-conversation/`, {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ userName: username || "Anon", character: selectedCharacter || "default", initialMessage: initial }),
-        });
+        }, SHORT_FETCH_TIMEOUT_MS);
         if (!res.ok) {
           if (!cancelled) setConversationId("local-only");
           return;
@@ -235,17 +261,11 @@ export default function Chat({
     comprehensionCueOpenedRef.current = null;
   }, [studyContext?.studySessionId]);
 
-  useEffect(() => {
-    const sid = studyContext?.studySessionId;
-    if (!sid || !studyContext?.showComprehension || !currentSheet) return;
-    if (comprehensionCueOpenedRef.current === sid) return;
-    comprehensionCueOpenedRef.current = sid;
-    setIsActivityOpen(true);
-  }, [
-    studyContext?.studySessionId,
-    studyContext?.showComprehension,
-    currentSheet,
-  ]);
+  // Activity sheet starts CLOSED in every session (including RCQ sessions 1/3/6/9).
+  // Children open it themselves when they want to write — auto-opening was distracting
+  // and pulled their attention away from the chat at the start of the session.
+  // The drawer remains accessible via its toggle button.
+  // (Was previously: setIsActivityOpen(true) when studyContext.showComprehension.)
 
   useEffect(() => {
     if (!studyContext?.sessionStartedAtISO || !studyContext?.maxSessionMinutes) {
@@ -274,6 +294,14 @@ export default function Chat({
     secondsUntilLock
   );
 
+  // Heartbeat keeps last_activity_at fresh on the backend so silent reading
+  // or activity-sheet writing doesn't trigger the inactivity lock.
+  useStudyHeartbeat({
+    studySessionId: studyContext?.studySessionId,
+    authToken: studyContext?.authToken,
+    enabled: Boolean(studyContext?.studySessionId),
+  });
+
   const sendMessage = async () => {
     const value = input.trim();
     if (!value || isLoading || !conversationId) return;
@@ -301,7 +329,11 @@ export default function Chat({
       const headers = { "Content-Type": "application/json" };
       if (studyContext?.authToken) headers.Authorization = `Bearer ${studyContext.authToken}`;
 
-      const res = await fetch(`${API_URL}/api/chat/`, { method: "POST", headers, body: JSON.stringify(payload) });
+      const res = await fetchWithTimeout(
+        `${API_URL}/api/chat/`,
+        { method: "POST", headers, body: JSON.stringify(payload) },
+        CHAT_FETCH_TIMEOUT_MS,
+      );
       const raw = await res.json().catch(() => ({}));
       if (raw.sessionLocked) {
         if (!lockEmittedRef.current) { lockEmittedRef.current = true; onStudyLocked?.(raw.lockReason || "time_cap"); }

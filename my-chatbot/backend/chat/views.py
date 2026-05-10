@@ -19,7 +19,7 @@ from typing import Dict, List, Optional
 from django.conf import settings
 from openai import OpenAI
 from .scaffold_policy import LadderPolicy, Move, render_move
-from .models import Conversation, StudySession
+from .models import Conversation, Participant, StudySession
 from .audit import compute_audit
 from .dialogic_frames import EUROPEAN_PORTUGUESE, get_dialogic_frame
 from .study_services import (
@@ -306,6 +306,21 @@ def build_system_prompt(
     chapter_context: str = "",
     condition: str = "generic",
 ) -> str:
+    # ----- Generic arm: behave like any vanilla GenAI assistant. -----
+    # No book context, no PEER/CROWD pedagogy, no persona, no name address,
+    # no forced follow-up question. The user leads the conversation.
+    # This is the experimental contrast point against the personalized arm,
+    # so it must NOT inherit study-specific scaffolding.
+    if (condition or "").lower() == "generic":
+        return (
+            "You are a helpful AI assistant. "
+            "Reply concisely in the same language the user writes in. "
+            "If the user writes in Portuguese, use European Portuguese (pt-PT, Portugal) "
+            "and address them as \"tu\" (informal singular), not \"você\". "
+            "Do not introduce yourself unprompted, do not assume any topic, "
+            "and do not start the conversation with questions — let the user lead."
+        )
+
     persona = CHARACTER_PERSONAS.get(character_key, CHARACTER_PERSONAS["default"])
 
     # Language + persona first so the model keeps pt-PT even when role-playing.
@@ -318,8 +333,16 @@ def build_system_prompt(
     )
     base = EUROPEAN_PORTUGUESE + "\n\n" + persona + "\n\n" + name_block + "\n\n"
 
-    if character_key != "default":
-        base += DEFAULT_PROMPT + "\n\n" + COACHING_PROMPT + "\n\n"
+    # FIX: DEFAULT_PROMPT defines a "neutral reading coach" identity.
+    # Injecting it AFTER a character persona creates a contradictory identity
+    # ("You are Naruto" + "You are a neutral coach") which collapses the
+    # role-play. Apply DEFAULT_PROMPT only when there is no character persona;
+    # otherwise rely on the persona itself as the identity, plus COACHING_PROMPT
+    # for the pedagogical layer.
+    if character_key == "default":
+        base += DEFAULT_PROMPT + "\n\n"
+    else:
+        base += COACHING_PROMPT + "\n\n"
 
     # Add dialogic reading frame (PEER/CROWD moves)
     base += get_dialogic_frame(condition) + "\n\n"
@@ -342,6 +365,29 @@ def build_system_prompt(
             "Choose ONE: ask for a 1–2 sentence summary, a prediction with a reason, a tricky word/line to unpack, "
             "or how a character feels with text evidence. Keep to 1–2 sentences total."
         )
+
+    # FIX: Re-anchor the character voice as the LAST instruction in the system
+    # prompt. In LLMs, instructions placed near the end of the system prompt
+    # carry more behavioural weight. Without this, the model tends to default
+    # to a "pedagogical assistant" tone because the move-guideline and the
+    # coaching frames dominate the tail of the prompt.
+    if character_key and character_key.lower() != "default":
+        persona_name = character_key
+        base += (
+            f"\n\n=== ÂNCORA DE VOZ (CRÍTICO) ===\n"
+            f"Tu ÉS {persona_name}. Não és um assistente nem um tutor disfarçado.\n"
+            f"- Cada resposta deve soar inequivocamente como {persona_name}: "
+            f"vocabulário, expressões típicas, exclamações, referências ao teu mundo.\n"
+            f"- Os enquadramentos PEER/CROWD são INVISÍVEIS para a criança: "
+            f"nunca os nomeies, nunca expliques que estás a ensinar uma técnica, "
+            f"nunca digas «vou-te fazer uma pergunta de tipo X».\n"
+            f"- Lês «Os Piratas» AO LADO da criança como um amigo do mundo de "
+            f"{persona_name} — não como professor a corrigir.\n"
+            f"- Se tiveres de escolher entre soar pedagógico e soar como "
+            f"{persona_name}, escolhe sempre {persona_name}.\n"
+            f"=== FIM DA ÂNCORA ==="
+        )
+
     return base
 
 def sanitize_history(items: List[Dict[str, str]]) -> List[Dict[str, str]]:
@@ -575,12 +621,14 @@ class ChatAPIView(APIView):
                     character = convo.character
                     user_name = convo.user_name
                 memory_context = get_memory_context_for_chat(participant)
-                
-                # One scene per global session (1–9), not per within-week slot only
-                g_idx = global_session_index(
-                    study_session.week_index, study_session.slot_index
-                )
-                chapter_context = _get_chapter_context(g_idx, character)
+
+                # One scene per global session (1–9), not per within-week slot only.
+                # Generic arm is intentionally a vanilla GenAI: NO book context.
+                if participant.condition != Participant.Condition.GENERIC:
+                    g_idx = global_session_index(
+                        study_session.week_index, study_session.slot_index
+                    )
+                    chapter_context = _get_chapter_context(g_idx, character)
 
             if not user_msg:
                 return Response(
@@ -641,8 +689,12 @@ class ChatAPIView(APIView):
             completion = client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=messages,
-                temperature=0.7,
-                max_tokens=180,
+                # FIX: Higher temperature gives more stylistic variability
+                # (essential for the character voice to come through);
+                # higher max_tokens prevents the model from cutting persona
+                # flavour to fit pedagogical structure inside ~135 words.
+                temperature=0.85,
+                max_tokens=320,
             )
 
             reply = completion.choices[0].message.content.strip()

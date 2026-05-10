@@ -133,43 +133,92 @@ def ordered_sessions(participant: Participant):
     )
 
 
+## Custom spacing rule (Study D protocol).
+## - Sessions 1, 2 and 3 must each fall on a different calendar day in the
+##   study timezone (i.e. min 1 day between consecutive sessions in this trio).
+## - From session 4 onwards there is no spacing requirement — once the
+##   previous session is completed, the next one unlocks immediately.
+SESSIONS_REQUIRING_DAY_SPACING = (2, 3)
+
+
+def _study_tz():
+    tz_name = getattr(settings, "STUDY_TIMEZONE", "UTC")
+    try:
+        import zoneinfo
+
+        return zoneinfo.ZoneInfo(tz_name)
+    except Exception:
+        return timezone.utc
+
+
+def _spacing_satisfied(prev_session: Optional[StudySession], current_g_idx: int) -> bool:
+    """Whether the day-spacing rule is satisfied for `current_g_idx`.
+
+    True when:
+      - the rule is disabled by settings (STUDY_DAY_SPACING_ENFORCED=False); or
+      - the rule does not apply (g_idx not in SESSIONS_REQUIRING_DAY_SPACING); or
+      - the previous session's `ended_at` falls on a strictly earlier calendar
+        day in the study timezone.
+    """
+    if not getattr(settings, "STUDY_DAY_SPACING_ENFORCED", True):
+        return True
+    if current_g_idx not in SESSIONS_REQUIRING_DAY_SPACING:
+        return True
+    if prev_session is None or not prev_session.ended_at:
+        # Defensive: only called after prev session is COMPLETED; if ended_at
+        # is somehow missing, allow rather than block forever.
+        return True
+    tz = _study_tz()
+    prev_day = prev_session.ended_at.astimezone(tz).date()
+    today = study_now().date()
+    return today > prev_day
+
+
 def refresh_session_availability(participant: Participant) -> None:
+    """Apply study-start gating, strict sequential completion, and the
+    sessions-2-and-3 day-spacing rule.
+
+    For each non-IN_PROGRESS, non-COMPLETED session, in order:
+      LOCKED    ← study not yet started, previous incomplete, or spacing not met
+      AVAILABLE ← all gates satisfied
     """
-    Apply calendar week release + strict sequential completion.
-    """
-    released = released_week_index()
     slots = ordered_sessions(participant)
-    prev_all_completed = True
+    now = study_now()
+    start_dt = study_start_datetime()
+    study_started = now >= start_dt
+
+    prev_session: Optional[StudySession] = None
 
     for ss in slots:
         if ss.status == StudySession.Status.COMPLETED:
-            prev_all_completed = True
+            prev_session = ss
             continue
-
-        if ss.week_index > released:
-            if ss.status not in (
-                StudySession.Status.IN_PROGRESS,
-                StudySession.Status.COMPLETED,
-            ):
-                if ss.status == StudySession.Status.AVAILABLE:
-                    ss.status = StudySession.Status.LOCKED
-                    ss.save(update_fields=["status"])
-            prev_all_completed = False
-            continue
-
         if ss.status == StudySession.Status.IN_PROGRESS:
-            prev_all_completed = False
+            # Don't change in-progress; nothing after it can unlock anyway.
+            prev_session = ss
             continue
 
-        if prev_all_completed:
-            if ss.status == StudySession.Status.LOCKED:
-                ss.status = StudySession.Status.AVAILABLE
-                ss.save(update_fields=["status"])
-            prev_all_completed = False
+        # Decide LOCKED vs AVAILABLE for this session.
+        g_idx = global_session_index(ss.week_index, ss.slot_index)
+
+        if not study_started:
+            new_status = StudySession.Status.LOCKED
+        elif prev_session is None:
+            # First session: only the start-date gate matters (already passed).
+            new_status = StudySession.Status.AVAILABLE
+        elif prev_session.status != StudySession.Status.COMPLETED:
+            # Sequential gate.
+            new_status = StudySession.Status.LOCKED
+        elif not _spacing_satisfied(prev_session, g_idx):
+            # Day-spacing rule for sessions 2 and 3.
+            new_status = StudySession.Status.LOCKED
         else:
-            if ss.status == StudySession.Status.AVAILABLE:
-                ss.status = StudySession.Status.LOCKED
-                ss.save(update_fields=["status"])
+            new_status = StudySession.Status.AVAILABLE
+
+        if ss.status != new_status:
+            ss.status = new_status
+            ss.save(update_fields=["status"])
+        prev_session = ss
 
 
 def _session_cap_seconds(participant: Participant) -> int:
@@ -239,21 +288,41 @@ def seconds_until_wall_lock(ss: StudySession, participant: Participant) -> Optio
 
 
 def get_current_study_session(participant: Participant) -> Optional[StudySession]:
-    ip = (
-        StudySession.objects.filter(
-            participant=participant, status=StudySession.Status.IN_PROGRESS
+    """Return the next session the participant should focus on.
+
+    Priority: IN_PROGRESS > AVAILABLE > LOCKED. Returning LOCKED here too means
+    the dashboard can show "next session is X, available [tomorrow]" instead of
+    falsely reporting "all sessions completed" when a spacing rule is active.
+    """
+    for status in (
+        StudySession.Status.IN_PROGRESS,
+        StudySession.Status.AVAILABLE,
+        StudySession.Status.LOCKED,
+    ):
+        nxt = (
+            StudySession.objects.filter(participant=participant, status=status)
+            .order_by("week_index", "slot_index")
+            .first()
         )
-        .order_by("week_index", "slot_index")
-        .first()
-    )
-    if ip:
-        return ip
-    return (
-        StudySession.objects.filter(
-            participant=participant, status=StudySession.Status.AVAILABLE
-        )
-        .order_by("week_index", "slot_index")
-        .first()
+        if nxt:
+            return nxt
+    return None
+
+
+def next_unlock_datetime(prev_session: Optional[StudySession], current_g_idx: int):
+    """If the next session is locked by the day-spacing rule, return the
+    earliest datetime (study tz) at which it will unlock. None otherwise."""
+    if not getattr(settings, "STUDY_DAY_SPACING_ENFORCED", True):
+        return None
+    if current_g_idx not in SESSIONS_REQUIRING_DAY_SPACING:
+        return None
+    if prev_session is None or not prev_session.ended_at:
+        return None
+    tz = _study_tz()
+    prev_day = prev_session.ended_at.astimezone(tz).date()
+    next_day = prev_day + timezone.timedelta(days=1)
+    return datetime(
+        next_day.year, next_day.month, next_day.day, 0, 0, 0, tzinfo=tz
     )
 
 
@@ -297,6 +366,21 @@ def progress_dict(participant: Participant) -> Dict[str, Any]:
         payload["focusSlotIndex"] = current.slot_index
         payload["focusGlobalSessionIndex"] = gidx
         payload["focusStatus"] = current.status
+        # If this session is locked specifically because of the day-spacing
+        # rule, surface the earliest unlock datetime so the UI can render
+        # "disponível amanhã" instead of just "bloqueada".
+        if current.status == StudySession.Status.LOCKED:
+            prev = (
+                StudySession.objects.filter(
+                    participant=participant,
+                    status=StudySession.Status.COMPLETED,
+                )
+                .order_by("-week_index", "-slot_index")
+                .first()
+            )
+            unlock_at = next_unlock_datetime(prev, gidx)
+            if unlock_at is not None:
+                payload["nextAvailableAt"] = unlock_at.isoformat()
         # True on global sessions 1, 3, 6, 9: RCQ block in PostSessionSurvey after session end.
         # Frontend may use this to cue children (e.g. open activity drawer); not a separate sheet API.
         payload["showComprehension"] = rcq_required_for_global_index(gidx)

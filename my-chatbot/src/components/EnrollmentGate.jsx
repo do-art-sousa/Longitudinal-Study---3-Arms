@@ -3,6 +3,25 @@ import React, { useState, useEffect } from "react";
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 const STUDY_LOGIN_CODE_KEY = "studyLoginCode";
 
+/** Network call timeout (ms) — prevents the submit button from hanging forever
+ *  on flaky tablet Wi-Fi. After this, fetch rejects and the catch branch
+ *  surfaces "Não foi possível ligar ao servidor." with the button re-enabled. */
+const ENROLL_FETCH_TIMEOUT_MS = 10_000;
+
+/** fetch() wrapper that aborts with an AbortError after timeoutMs. */
+async function fetchWithTimeout(url, options = {}, timeoutMs = ENROLL_FETCH_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(
+    () => controller.abort(new DOMException("timeout", "AbortError")),
+    timeoutMs,
+  );
+  try {
+    return await fetch(url, { ...options, signal: options.signal || controller.signal });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 // We removed the old rigid formatting so it perfectly supports formats like "AB-12"
 function formatLoginCodeForDisplay(code) {
   if (!code) return "";
@@ -68,7 +87,7 @@ export default function EnrollmentGate({ onEnrolled }) {
 
     setBusy(true);
     try {
-      const res = await fetch(`${API_URL}/api/study/register/`, {
+      const res = await fetchWithTimeout(`${API_URL}/api/study/register/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -102,7 +121,7 @@ export default function EnrollmentGate({ onEnrolled }) {
     setError("");
     setBusy(true);
     try {
-      const res = await fetch(`${API_URL}/api/study/login/`, {
+      const res = await fetchWithTimeout(`${API_URL}/api/study/login/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -217,7 +236,7 @@ export default function EnrollmentGate({ onEnrolled }) {
             </div>
             
             <div className="input-group">
-              <label htmlFor="study-return-pin">PIN (ex: AB-12)</label>
+              <label htmlFor="study-return-pin">PIN (ex: 1358)</label>
               {/* Changed type to text so children can see letters/dashes while typing */}
               <input
                 id="study-return-pin"
@@ -278,7 +297,7 @@ export default function EnrollmentGate({ onEnrolled }) {
             </div>
             
             <div className="input-group">
-              <label htmlFor="study-enroll-pin">Cria um PIN (ex: AB-12)</label>
+              <label htmlFor="study-enroll-pin">Cria um PIN (ex: 1358)</label>
               {/* Changed type to text for easier input validation by the child */}
               <input
                 id="study-enroll-pin"

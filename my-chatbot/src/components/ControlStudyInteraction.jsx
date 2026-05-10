@@ -3,6 +3,7 @@ import { getSheetForSession } from "../data/activity_sheets";
 import ActivitySheetPanel from "./ActivitySheetPanel.jsx";
 import { useTwoMinuteTimerFlash } from "../hooks/useTwoMinuteTimerFlash.js";
 import { useActivitySheetAutosave } from "../hooks/useActivitySheetAutosave.js";
+import { useStudyHeartbeat } from "../hooks/useStudyHeartbeat.js";
 import {
   getRequiredCheckedTasksForSession,
   countCompleteActivityTasks,
@@ -69,6 +70,15 @@ export default function ControlStudyInteraction({
     studyContext?.studySessionId,
     secondsUntilLock
   );
+
+  // Heartbeat keeps last_activity_at fresh on the backend so writing on the
+  // sheet (without ever sending a chat message — control arm has no chat)
+  // doesn't trigger the inactivity lock.
+  useStudyHeartbeat({
+    studySessionId: studyContext?.studySessionId,
+    authToken: studyContext?.authToken,
+    enabled: Boolean(studyContext?.studySessionId),
+  });
 
   const handleTaskToggle = (taskId) => {
     setCheckedTasks((prev) => ({ ...prev, [taskId]: !prev[taskId] }));

@@ -13,6 +13,7 @@ from django.http import JsonResponse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
+from django_ratelimit.decorators import ratelimit
 
 from .models import Conversation, Participant, StudySession
 from .study_config import allowed_character, get_profile, resolve_enrollment_code
@@ -142,9 +143,38 @@ def study_register(request):
     return JsonResponse(_register_response_json(participant))
 
 
+def _login_code_key(group, request):
+    """django-ratelimit key: the loginCode field of the JSON body, normalized.
+    Lets us cap attempts per account independently from per-IP throttling."""
+    try:
+        body = json.loads((request.body or b"").decode("utf-8") or "{}")
+        return normalize_login_code(
+            str(body.get("loginCode") or body.get("login_code") or "")
+        )
+    except Exception:
+        return ""
+
+
+@ratelimit(key="ip", rate="20/m", method="POST", block=False)
+@ratelimit(key=_login_code_key, rate="10/h", method="POST", block=False)
 @csrf_exempt
 @require_POST
 def study_login(request):
+    # Two layers: a generous 20-per-minute IP cap (so multiple kids on a school
+    # Wi-Fi don't trip each other), and a strict 10-per-hour cap per loginCode
+    # — after 10 wrong tries against the same account, lock that code for an
+    # hour. With block=False we get a flag and return a child-friendly message
+    # rather than the default 429 HTML page.
+    if getattr(request, "limited", False):
+        return JsonResponse(
+            {
+                "error": (
+                    "Demasiadas tentativas. Tenta outra vez daqui a uns minutos."
+                )
+            },
+            status=429,
+        )
+
     body = _json_body(request)
     raw_code = body.get("loginCode") or body.get("login_code") or ""
     pin = (body.get("pin") or body.get("PIN") or "").strip()
@@ -357,6 +387,7 @@ def study_session_complete(request):
     comprehension = body.get("comprehension") or body.get("comprehension_responses")
     caiq_panas = body.get("caiq_panas")
     req_scores = body.get("req_scores") or body.get("reqScores")
+    activity_sheet = body.get("activitySheet") or body.get("activity_sheet")
 
     if not sid:
         return JsonResponse({"error": "studySessionId required"}, status=400)
@@ -425,6 +456,16 @@ def study_session_complete(request):
         if "scores" in caiq_panas:
             ss.caiq_panas_scores = caiq_panas["scores"]
 
+    # Activity sheet — checkboxes and free-text notes captured during the session.
+    # Shape: {"sheetSession": int, "checkedTasks": {taskId: bool}, "taskNotes": {taskId: str}}.
+    # Stored regardless of arm (control's ControlStudyInteraction has its own sheet too).
+    if activity_sheet is not None:
+        if not isinstance(activity_sheet, dict):
+            return JsonResponse(
+                {"error": "activitySheet must be an object"}, status=400
+            )
+        ss.activity_sheet_responses = activity_sheet
+
     ss.save(
         update_fields=[
             "status",
@@ -436,6 +477,7 @@ def study_session_complete(request):
             "req_scores",
             "caiq_panas_responses",
             "caiq_panas_scores",
+            "activity_sheet_responses",
         ]
     )
 

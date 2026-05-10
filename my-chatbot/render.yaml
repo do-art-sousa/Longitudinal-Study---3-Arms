@@ -11,7 +11,10 @@ services:
   - type: web
     name: reading-chatbot-api
     runtime: python
-    plan: free
+    # Starter ($7/mo): no spin-down (no cold starts), 512 MB RAM, shell access,
+    # and full feature set. Required for a real study so children don't wait
+    # ~1 min on the first request of the day.
+    plan: starter
     rootDir: my-chatbot/backend
     buildCommand: pip install -r requirements.txt && python manage.py migrate --noinput && python manage.py collectstatic --noinput
     startCommand: gunicorn config.wsgi:application --bind 0.0.0.0:$PORT
@@ -23,13 +26,40 @@ services:
       - key: DEBUG
         value: "False"
       - key: OPENAI_API_KEY
-        sync: false
+        sync: false                 # set in Render dashboard, never in the repo
       - key: DATABASE_URL
         fromDatabase:
           name: reading-chatbot-db
           property: connectionString
       - key: DATABASE_SSL_REQUIRE
         value: "true"
+      # ---- Study configuration ----
+      # Enrollment codes (case-insensitive). sync: false → set in dashboard so
+      # they aren't committed to the repo. Defaults pre-filled locally only.
+      - key: STUDY_CODES_PERSONALIZED
+        sync: false
+      - key: STUDY_CODES_GENERIC
+        sync: false
+      - key: STUDY_CODES_CONTROL
+        sync: false
+      - key: STUDY_START_DATE
+        value: "2026-05-11"
+      - key: STUDY_TIMEZONE
+        value: "Europe/Lisbon"
+      - key: STUDY_TOTAL_WEEKS
+        value: "3"
+      - key: STUDY_INACTIVITY_SECONDS
+        value: "1500"
+      - key: STUDY_DAY_SPACING_ENFORCED
+        value: "true"
+      - key: STUDY_ROTATE_TOKEN_ON_LOGIN
+        value: "true"
+      - key: STUDY_PIN_MIN_LENGTH
+        value: "4"
+      - key: STUDY_PIN_MAX_LENGTH
+        value: "6"
+      - key: STUDY_LOGIN_CODE_LENGTH
+        value: "10"
 
   # No rootDir: static publish path is from the repo root (see Render monorepo docs).
   # Build explicitly enters my-chatbot/ so Vite outputs to my-chatbot/dist.
@@ -47,6 +77,9 @@ services:
 
 databases:
   - name: reading-chatbot-db
-    plan: free
+    # Starter ($7/mo): persistent, no 30-day expiry, automatic daily backups
+    # with 7-day retention, point-in-time recovery. Essential for a study
+    # whose data will be analysed and cited.
+    plan: starter
     databaseName: reading_chatbot
     user: reading_chatbot_user

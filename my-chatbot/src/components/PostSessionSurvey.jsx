@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { rcqData } from "../data/rcq_data";
 import { REQ_ITEMS } from "../data/req_data";
 import {
@@ -11,8 +11,25 @@ import {
   getSurveyForSession,
   calculateSurveyScores,
 } from "../data/caiq_panas_data";
+import { loadActivitySheetDraft } from "../utils/activitySheetDraft.js";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+
+/** Survey submit can include long free-text answers; allow 15s before aborting. */
+const SURVEY_FETCH_TIMEOUT_MS = 15_000;
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = SURVEY_FETCH_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(
+    () => controller.abort(new DOMException("timeout", "AbortError")),
+    timeoutMs,
+  );
+  try {
+    return await fetch(url, { ...options, signal: options.signal || controller.signal });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
 
 /**
  * Shown only after the child ends the session (chat/control interaction + activity sheet).
@@ -72,6 +89,17 @@ export default function PostSessionSurvey({
   const [currentStep, setCurrentStep] = useState(() => (hasRcq ? "rcq" : "survey"));
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+
+  // Always show the questionnaire from the top (title visible) when it opens
+  // and whenever the step changes (RCQ → Survey). Without this the page
+  // inherits the chat scroll position and the title is off-screen.
+  useEffect(() => {
+    try {
+      window.scrollTo({ top: 0, behavior: "auto" });
+    } catch {
+      window.scrollTo(0, 0);
+    }
+  }, [currentStep]);
 
   const handleRcqChange = (id, value) => {
     setRcqResponses((prev) => ({ ...prev, [id]: value }));
@@ -202,7 +230,21 @@ export default function PostSessionSurvey({
         body.req_scores = buildReqScores();
       }
 
-      const res = await fetch(`${API_URL}/api/study/session/complete/`, {
+      // Pull the activity-sheet draft (checkboxes + notes) from localStorage and
+      // forward it to the backend so it gets persisted on StudySession alongside
+      // the surveys. The draft is cleared by the dashboard after handleSurveyDone,
+      // so reading it here is safe — it's still present at submit time.
+      const sheetDraft = loadActivitySheetDraft(studySessionId);
+      if (sheetDraft) {
+        body.activitySheet = {
+          sheetSession: sheetDraft.sheetSession,
+          checkedTasks: sheetDraft.checkedTasks || {},
+          taskNotes: sheetDraft.taskNotes || {},
+          savedAt: sheetDraft.savedAt || null,
+        };
+      }
+
+      const res = await fetchWithTimeout(`${API_URL}/api/study/session/complete/`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

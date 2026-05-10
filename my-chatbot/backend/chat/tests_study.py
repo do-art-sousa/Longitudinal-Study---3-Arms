@@ -50,6 +50,7 @@ REQ_SMOKE_BODY = {
     STUDY_PIN_MAX_LENGTH=6,
     STUDY_LOGIN_CODE_LENGTH=10,
     STUDY_ROTATE_TOKEN_ON_LOGIN=True,
+    STUDY_DAY_SPACING_ENFORCED=False,
 )
 class StudyApiTests(TestCase):
     def setUp(self):
@@ -467,6 +468,7 @@ class StudyApiTests(TestCase):
     STUDY_PIN_MAX_LENGTH=6,
     STUDY_LOGIN_CODE_LENGTH=10,
     STUDY_ROTATE_TOKEN_ON_LOGIN=True,
+    STUDY_DAY_SPACING_ENFORCED=False,
 )
 class StudyThreeArmFullScheduleSmokeTests(TestCase):
     """
@@ -563,6 +565,140 @@ class StudyThreeArmFullScheduleSmokeTests(TestCase):
         self.assertEqual(r.status_code, 200)
         token = json.loads(r.content)["authToken"]
         self.assertEqual(self._walk_full_schedule(token, control=True), 9)
+
+
+@override_settings(
+    STUDY_CODES_PERSONALIZED="TEST-P",
+    STUDY_CODES_GENERIC="TEST-G",
+    STUDY_CODES_CONTROL="TEST-C",
+    STUDY_START_DATE="1990-01-01",
+    STUDY_TIMEZONE="UTC",
+    STUDY_TOTAL_WEEKS=3,
+    STUDY_PIN_MIN_LENGTH=4,
+    STUDY_PIN_MAX_LENGTH=6,
+    STUDY_LOGIN_CODE_LENGTH=10,
+    STUDY_DAY_SPACING_ENFORCED=True,
+)
+class StudyDaySpacingTests(TestCase):
+    """Sessions 2 and 3 must each fall on a different calendar day from the
+    previous session. Sessions 4-9 unlock immediately after the previous one."""
+
+    def setUp(self):
+        self.client = Client()
+
+    def _register(self, code="TEST-P"):
+        r = self.client.post(
+            "/api/study/register/",
+            data=_register_payload(code),
+            content_type="application/json",
+        )
+        self.assertEqual(r.status_code, 200)
+        data = json.loads(r.content)
+        return data["authToken"], Participant.objects.get(id=data["participantId"])
+
+    def _complete(self, token, sid, gidx):
+        body = {
+            "studySessionId": sid,
+            "endReason": "completed_content",
+            "likert": {"rapport": 3, "closeness": 3, "flow": 3},
+        }
+        if gidx in (1, 3, 6, 9):
+            body["comprehension"] = {"main_response": "ok"}
+        r = self.client.post(
+            "/api/study/session/complete/",
+            data=json.dumps(body),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {token}",
+        )
+        self.assertEqual(r.status_code, 200, r.content)
+
+    def _start(self, token, sid):
+        r = self.client.post(
+            "/api/study/session/start/",
+            data=json.dumps(
+                {"studySessionId": sid, "userName": "Test", "character": "default"}
+            ),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {token}",
+        )
+        return r
+
+    def _progress(self, token):
+        r = self.client.get(
+            "/api/study/progress/", HTTP_AUTHORIZATION=f"Bearer {token}"
+        )
+        self.assertEqual(r.status_code, 200)
+        return json.loads(r.content)
+
+    def _backdate_completed(self, participant, days):
+        """Pretend every COMPLETED session ended `days` days earlier in real time."""
+        for ss in StudySession.objects.filter(
+            participant=participant, status=StudySession.Status.COMPLETED
+        ):
+            ss.ended_at = ss.ended_at - timezone.timedelta(days=days)
+            ss.save(update_fields=["ended_at"])
+
+    def test_session_2_locked_same_day_unlocks_next_day(self):
+        token, p = self._register()
+        prog = self._progress(token)
+        s1_id = prog["focusSessionId"]
+        self.assertEqual(prog["focusGlobalSessionIndex"], 1)
+
+        # Complete session 1 (today).
+        self._start(token, s1_id)
+        self._complete(token, s1_id, 1)
+
+        # Session 2 should NOT be available yet (same calendar day as session 1).
+        prog = self._progress(token)
+        self.assertEqual(prog["focusGlobalSessionIndex"], 2)
+        self.assertEqual(
+            prog["focusStatus"],
+            "locked",
+            "session 2 should be locked on the same day as session 1",
+        )
+
+        # Backdate session 1 to "yesterday" → spacing now satisfied.
+        self._backdate_completed(p, days=1)
+        prog = self._progress(token)
+        self.assertEqual(prog["focusStatus"], "available")
+
+    def test_session_4_unlocks_immediately_after_session_3(self):
+        token, p = self._register()
+        # Walk sessions 1→3 with backdating between each so spacing passes.
+        for expected_g in (1, 2, 3):
+            prog = self._progress(token)
+            self.assertEqual(prog["focusGlobalSessionIndex"], expected_g)
+            sid = prog["focusSessionId"]
+            self._start(token, sid)
+            self._complete(token, sid, expected_g)
+            self._backdate_completed(p, days=1)
+
+        # Session 4 must be AVAILABLE the same day as session 3 (no spacing).
+        prog = self._progress(token)
+        self.assertEqual(prog["focusGlobalSessionIndex"], 4)
+        self.assertEqual(
+            prog["focusStatus"],
+            "available",
+            "session 4 must unlock immediately after session 3 — no spacing rule",
+        )
+
+    def test_sessions_5_to_9_chain_without_spacing(self):
+        token, p = self._register()
+        # Get past 1-3 with spacing.
+        for expected_g in (1, 2, 3):
+            prog = self._progress(token)
+            sid = prog["focusSessionId"]
+            self._start(token, sid)
+            self._complete(token, sid, expected_g)
+            self._backdate_completed(p, days=1)
+        # Now sessions 4..9 chain back-to-back, all today.
+        for expected_g in (4, 5, 6, 7, 8, 9):
+            prog = self._progress(token)
+            self.assertEqual(prog["focusGlobalSessionIndex"], expected_g)
+            self.assertEqual(prog["focusStatus"], "available")
+            sid = prog["focusSessionId"]
+            self._start(token, sid)
+            self._complete(token, sid, expected_g)
 
 
 @override_settings(STUDY_PIN_MIN_LENGTH=4, STUDY_PIN_MAX_LENGTH=6)

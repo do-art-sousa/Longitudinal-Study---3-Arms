@@ -45,6 +45,7 @@ class StudySessionAdmin(admin.ModelAdmin):
         "status",
         "rcq_score_summary",
         "caiq_scores_summary",
+        "activity_sheet_summary",
         "started_at",
         "ended_at",
         "end_reason",
@@ -73,12 +74,28 @@ class StudySessionAdmin(admin.ModelAdmin):
         return "-"
     caiq_scores_summary.short_description = "Survey Scores"
 
+    def activity_sheet_summary(self, obj):
+        """Quick at-a-glance count: ticked tasks / tasks with non-empty notes."""
+        sheet = obj.activity_sheet_responses or {}
+        checked = sheet.get("checkedTasks") or {}
+        notes = sheet.get("taskNotes") or {}
+        n_checked = sum(1 for v in checked.values() if v)
+        n_with_text = sum(
+            1 for k, v in checked.items()
+            if v and str(notes.get(k, "")).strip()
+        )
+        if n_checked == 0 and n_with_text == 0:
+            return "-"
+        return f"{n_checked} ✓ · {n_with_text} ✍️"
+    activity_sheet_summary.short_description = "Activity Sheet"
+
     readonly_fields = (
         "id",
         "caiq_panas_responses",
         "rcq_score",
         "comprehension_responses",
         "caiq_panas_scores",
+        "activity_sheet_responses",
     )
     list_filter = ("status", "week_index")
     ordering = ("participant", "week_index", "slot_index")

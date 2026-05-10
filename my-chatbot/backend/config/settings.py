@@ -162,6 +162,11 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 CORS_ALLOWED_ORIGINS_STR = os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:5173")
 CORS_ALLOWED_ORIGINS = [origin.strip() for origin in CORS_ALLOWED_ORIGINS_STR.split(",") if origin.strip()]
 
+# Vite may use 5173, 5174, 5175, … if ports are busy; allow any origin in local DEBUG
+# so enrollment/chat API calls are not blocked by a missing CORS_ALLOW_ORIGINS entry.
+if DEBUG:
+    CORS_ALLOW_ALL_ORIGINS = True
+
 # Fallback when CORS_* env is unset: allow any Render HTTPS app origin.
 CORS_ALLOWED_ORIGIN_REGEXES = []
 if (
@@ -218,6 +223,11 @@ STUDY_START_DATE = os.getenv("STUDY_START_DATE", "2020-01-01")
 # IANA timezone for week boundaries and session clock.
 STUDY_TIMEZONE = os.getenv("STUDY_TIMEZONE", "UTC")
 STUDY_TOTAL_WEEKS = int(os.getenv("STUDY_TOTAL_WEEKS", "3"))
+# Sessions 2 and 3 must each fall on a different calendar day from the previous
+# session (Study D protocol). Set to "false" only for tests / manual overrides.
+STUDY_DAY_SPACING_ENFORCED = (
+    os.getenv("STUDY_DAY_SPACING_ENFORCED", "true").lower() == "true"
+)
 STUDY_INACTIVITY_SECONDS = int(os.getenv("STUDY_INACTIVITY_SECONDS", "600"))
 STUDY_HEARTBEAT_MAX_DELTA_SECONDS = int(
     os.getenv("STUDY_HEARTBEAT_MAX_DELTA_SECONDS", "120")

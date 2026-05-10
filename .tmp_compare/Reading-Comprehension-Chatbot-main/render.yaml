@@ -1,0 +1,60 @@
+# Blueprint for Render.com (repository root — Render auto-discovers ./render.yaml).
+# See DEPLOY.md. Do not set a per-service Root Directory in the dashboard unless you
+# change paths below.
+#
+# - Vite bakes VITE_API_URL at static build: we pull the API service RENDER_EXTERNAL_URL
+#   so the live site calls your API (and Postgres) instead of localhost.
+# - The API does not need the static URL in CORS: config/settings.py allows
+#   https://*.onrender.com when RENDER is set (CORS_TRUST_ONRENDER, default on).
+# - ALLOWED_HOSTS includes the hostname from RENDER_EXTERNAL_URL on the API service.
+# - Do NOT run migrate in buildCommand: the build network often cannot resolve the
+#   managed Postgres host; use preDeployCommand so migrations run when the DB is reachable.
+services:
+  - type: web
+    name: reading-chatbot-api
+    runtime: python
+    plan: free
+    rootDir: my-chatbot/backend
+    buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput
+    preDeployCommand: python manage.py migrate --noinput
+    startCommand: gunicorn config.wsgi:application --bind 0.0.0.0:$PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.13.0"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DEBUG
+        value: "False"
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: DATABASE_URL
+        fromDatabase:
+          name: reading-chatbot-db
+          property: connectionString
+      - key: DATABASE_SSL_REQUIRE
+        value: "true"
+      # 3 weeks × 3 slots = 9 sessions; 20 minute wall per session (both study arms)
+      - key: STUDY_TOTAL_WEEKS
+        value: "3"
+      - key: STUDY_PROFILE_PERSONALIZED_MAX_SESSION_MINUTES
+        value: "20"
+      - key: STUDY_PROFILE_GENERIC_MAX_SESSION_MINUTES
+        value: "20"
+  # Build explicitly enters my-chatbot/ so Vite outputs to my-chatbot/dist.
+  - type: web
+    name: reading-chatbot-frontend
+    runtime: static
+    buildCommand: cd my-chatbot && npm install && npm run build
+    staticPublishPath: my-chatbot/dist
+    envVars:
+      - key: VITE_API_URL
+        fromService:
+          name: reading-chatbot-api
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
+
+databases:
+  - name: reading-chatbot-db
+    plan: free
+    databaseName: reading_chatbot
+    user: reading_chatbot_user

@@ -84,6 +84,15 @@ class StudySession(models.Model):
     # New field to store the REQ-specific metrics for the Control Group
     req_scores = models.JSONField(null=True, blank=True, help_text="Metrics: Social Presence, Connection, Isolation, etc.")
 
+    # Per-task checkbox state and free-text notes captured by ActivitySheetPanel.
+    # Shape: {"sheetSession": int, "checkedTasks": {taskId: bool}, "taskNotes": {taskId: str}}
+    # Submitted at session_complete time; previously lived only in the child's localStorage.
+    activity_sheet_responses = models.JSONField(
+        null=True,
+        blank=True,
+        help_text="Activity sheet — checkboxes and free-text answers per task.",
+    )
+
     class Meta:
         constraints = [
             models.UniqueConstraint(fields=["participant", "week_index", "slot_index"], name="unique_session")

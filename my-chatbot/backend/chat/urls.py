@@ -23,4 +23,5 @@ urlpatterns = [
     path("study/session/exit/", study_views.study_session_exit, name="study_session_exit"),
     path("export/quantitative/", export_views.export_quantitative_data, name="export_quantitative"),
     path("export/chat-logs/", export_views.export_chat_logs, name="export_chat_logs"),
+    path("export/activity-sheets/", export_views.export_activity_sheets, name="export_activity_sheets"),
 ]
