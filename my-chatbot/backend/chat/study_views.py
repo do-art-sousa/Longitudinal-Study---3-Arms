@@ -397,6 +397,8 @@ def study_session_complete(request):
         return JsonResponse({"error": "Study session not found"}, status=404)
 
     if ss.status != StudySession.Status.IN_PROGRESS:
+        if ss.status == StudySession.Status.COMPLETED:
+            return JsonResponse({"ok": True, "progress": progress_dict(participant)})
         return JsonResponse(
             {"error": "Session is not in progress", "status": ss.status}, status=400
         )
